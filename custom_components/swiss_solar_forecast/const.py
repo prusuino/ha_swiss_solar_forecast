@@ -38,6 +38,14 @@ CONF_LOSSES = "losses"  # system losses in percent (wiring, inverter, soiling, m
 CONF_INVERTER_KW = "inverter_kw"  # AC limit of the inverter, kW; 0 = no clipping
 CONF_DAMPING = "damping"  # multiplier applied to the result, for calibration against the real yield
 
+# Roof plane from the Sonnendach cadastre (absent when the plane was entered by hand)
+CONF_ROOF_ID = "roof_id"
+CONF_ROOF_AREA = "roof_area"  # m²
+CONF_ROOF_CLASS = "roof_class"  # SFOE suitability class 1…5
+CONF_ROOF_IRRADIATION = "roof_irradiation"  # mean irradiation on the plane, kWh/m²/a
+CONF_ROOF_MONTHLY = "roof_monthly"  # {"1": percent, …, "12": percent} of the year's yield
+CONF_ADDRESS = "address"  # the address text the place was found with, for the device card
+
 DEFAULT_LOSSES = 14.0
 DEFAULT_DAMPING = 1.0
 DEFAULT_TILT = 30.0

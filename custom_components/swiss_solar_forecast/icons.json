@@ -10,6 +10,8 @@
       "peak_power_today": { "default": "mdi:weather-sunny" },
       "peak_time_today": { "default": "mdi:clock-outline" },
       "peak_power_tomorrow": { "default": "mdi:weather-sunny" },
+      "typical_day_energy": { "default": "mdi:home-roof" },
+      "forecast_vs_typical": { "default": "mdi:percent-outline" },
       "run": { "default": "mdi:clock-check-outline" },
       "requests_today": { "default": "mdi:counter" },
       "bytes_today": { "default": "mdi:download-network-outline" }

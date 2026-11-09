@@ -12,10 +12,12 @@ A Home Assistant custom integration that forecasts the output of your PV plant f
 
 ## Highlights
 
+- **Your roof from the solar cadastre**: type your address or drop the marker on the roof, and the planes of that building appear from *Sonnendach*, the Swiss solar cadastre of the Federal Office of Energy — orientation, tilt, area, suitability class and long-term yield. Pick yours, correct what you know better, done. No guessing of azimuths; and a plane the cadastre does not know is entered by hand.
 - **The MeteoSwiss forecast, on your roof**: global *and* diffuse radiation from the official model, projected on your module plane (azimuth, tilt), with the cell temperature from the forecast air temperature, your system losses and the inverter limit. No guessed cloud factors.
 - **Energy dashboard**: the forecast appears as *solar production forecast* in the energy dashboard, like Solcast or Forecast.Solar — without an account or a daily request limit.
 - **Sensors that automations can use**: energy today, tomorrow, the day after and the rest of today; power now and next hour; today's peak and when it comes. Hourly values for nine days as attributes.
 - **Several roofs**: one entry per module plane; add a second entry for the other orientation. Sum them with a helper if you want one figure.
+- **A yardstick**: with a cadastre roof, a sensor shows the long-term expectation of a day in this month and the forecast as a percentage of it — "today 60 % of a normal November day".
 - **Calibration**: a damping factor scales the result once you have compared a few weeks with your real yield.
 - **Reads sparingly**: one HEAD request every 15 minutes tells whether a new model run exists; only then are three parameter files read, about 300 KB per run, 7 MB a day. A diagnostics sensor shows the traffic.
 - **Set up in a minute**: from your Home Assistant location or by typing a place or postal code; German, English, French and Italian; repairs notice when the data cannot be read; diagnostics download with your location redacted.
@@ -38,6 +40,7 @@ One device per entry (one module plane), with these sensors:
 | `…_power_now`, `…_power_next_hour` | The forecast AC power of the current and the next hour, W. |
 | `…_peak_power_today`, `…_peak_time_today` | Today's highest hourly power and the middle of that hour. |
 | `…_peak_power_tomorrow` | Tomorrow's peak (disabled by default). |
+| `…_typical_day_energy`, `…_forecast_vs_typical` | Only for a plane chosen from the cadastre: the long-term expectation of a day of this month (attributes: tomorrow, the whole month, roof area and class) and today's forecast as a percentage of it. |
 | `…_run`, `…_requests_today`, `…_bytes_today` | Diagnostics: the model run in use, and the requests and bytes read since midnight (disabled by default). |
 
 The energy values refresh with every model run (hourly) and the time-dependent ones every five minutes.
@@ -84,12 +87,13 @@ The sensors are plain numbers and timestamps, so the automation editor can use t
 
 **Settings → Devices & services → Add integration → Swiss Solar Forecast.**
 
-1. **Place and plane.** Your Home Assistant location is pre-filled; move the marker or type a place or postal code. Then the plane: a name, the peak power in kWp, the azimuth the modules face (0 north, 90 east, 180 south, 270 west), the tilt from horizontal, the system losses (14 % is a usual figure for wiring, inverter, soiling and mismatch), the inverter's AC limit (0 for none) and the damping factor (1 to start with).
-2. **Forecast point.** The MeteoSwiss forecast points nearest to the place, nearest first; pick the one that matches.
+1. **Place.** A name for the plane, then your Home Assistant location pre-filled on the map: move the marker onto your roof, or type a street address (every address of Switzerland is known; a building without a street address is found by the marker).
+2. **Roof plane.** The planes of that building from the Sonnendach cadastre, largest first, with orientation, tilt, area, suitability class (1 low … 5 top) and the long-term yield. Pick yours. The last entry (—) is for a plane the cadastre does not know, a wrong outline or a ground-mounted plant: you then enter orientation and tilt yourself.
+3. **Figures.** Orientation and tilt from the cadastre (correct them if you know better), the installed peak power in kWp (the form tells how much the cadastre's area would hold), the system losses (14 % is a usual figure for wiring, inverter, soiling and mismatch), the inverter's AC limit (0 for none) and the damping factor (1 to start with). The MeteoSwiss forecast point nearest to the roof is chosen automatically.
 
-**Configure** (the entry's ⚙️) changes the plane; **Reconfigure** (the entry's ⋮ menu) moves the plant to another place. Both keep the entities, their ids and history.
+**Configure** (the entry's ⚙️) changes the figures; **Reconfigure** (the entry's ⋮ menu) moves the plant to another place or roof. Both keep the entities, their ids and history.
 
-For a second roof, add another entry with its own orientation. The same point with the same azimuth and tilt is refused as a duplicate.
+For a second roof, add another entry and pick the other plane. The same cadastre roof twice is refused as a duplicate.
 
 ### Calibration
 
@@ -121,7 +125,7 @@ The integration declares **Bronze** on the [Home Assistant integration quality s
 
 ## Data source & license
 
-Forecast data: Federal Office of Meteorology and Climatology MeteoSwiss, open government data on data.geo.admin.ch, CC BY 4.0. This integration is not affiliated with MeteoSwiss. See `NOTICE.md`.
+Forecast data: Federal Office of Meteorology and Climatology MeteoSwiss, open government data on data.geo.admin.ch, CC BY 4.0. Roof data: Sonnendach, Swiss Federal Office of Energy (SFOE), open government data through the federal geo API (api3.geo.admin.ch), source attribution required. Address search: the federal address register through the same API. This integration is not affiliated with MeteoSwiss or the SFOE. See `NOTICE.md`.
 
 ## Disclaimer
 

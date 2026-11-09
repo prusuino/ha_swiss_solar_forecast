@@ -15,9 +15,12 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
 from . import SolarForecastConfigEntry
-from .const import ATTRIBUTION, DOMAIN
-from .coordinator import ForecastSnapshot, SolarForecastCoordinator
+from .const import ATTRIBUTION, CONF_ROOF_IRRADIATION, CONF_ROOF_MONTHLY, DOMAIN
+from .coordinator import ForecastSnapshot, SolarForecastCoordinator, plane_from_entry
 from .device import device_info, entry_suffix
+from .sonnendach import ATTRIBUTION_SONNENDACH, typical_day_kwh
+
+from calendar import monthrange
 
 # key: (device class, unit, state class, enabled by default, entity category)
 _META: dict[str, tuple[SensorDeviceClass | None, str | None, SensorStateClass | None, bool, EntityCategory | None]] = {
@@ -30,16 +33,34 @@ _META: dict[str, tuple[SensorDeviceClass | None, str | None, SensorStateClass | 
     "peak_power_today": (SensorDeviceClass.POWER, UnitOfPower.WATT, None, True, None),
     "peak_time_today": (SensorDeviceClass.TIMESTAMP, None, None, True, None),
     "peak_power_tomorrow": (SensorDeviceClass.POWER, UnitOfPower.WATT, None, False, None),
+    # from the Sonnendach cadastre, only for a plane chosen there
+    "typical_day_energy": (SensorDeviceClass.ENERGY, UnitOfEnergy.KILO_WATT_HOUR, None, True, None),
+    "forecast_vs_typical": (None, "%", SensorStateClass.MEASUREMENT, True, None),
     "run": (SensorDeviceClass.TIMESTAMP, None, None, False, EntityCategory.DIAGNOSTIC),
     "requests_today": (None, None, SensorStateClass.TOTAL, False, EntityCategory.DIAGNOSTIC),
     "bytes_today": (SensorDeviceClass.DATA_SIZE, "B", SensorStateClass.TOTAL, False, EntityCategory.DIAGNOSTIC),
 }
+_ROOF_KEYS = ("typical_day_energy", "forecast_vs_typical")
 _TICK = timedelta(minutes=5)  # the time-dependent values (now, remaining) move between runs
+
+
+def typical_day_wh(entry: SolarForecastConfigEntry, day) -> float | None:
+    """The cadastre's long-term expectation for a day of this month."""
+    monthly = entry.data.get(CONF_ROOF_MONTHLY) or {}
+    plane = plane_from_entry(entry)
+    try:
+        shares = {int(k): float(v) for k, v in monthly.items()}
+        irradiation = float(entry.data.get(CONF_ROOF_IRRADIATION) or 0)
+    except (TypeError, ValueError):
+        return None
+    kwh = typical_day_kwh(plane.kwp, irradiation, shares, day.month, monthrange(day.year, day.month)[1], plane.losses, plane.damping)
+    return None if kwh is None else kwh * 1000.0
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: SolarForecastConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
     coordinator = entry.runtime_data
-    entities = [SolarForecastSensor(coordinator, entry, key) for key in _META]
+    has_roof = bool(entry.data.get(CONF_ROOF_MONTHLY))
+    entities = [SolarForecastSensor(coordinator, entry, key) for key in _META if has_roof or key not in _ROOF_KEYS]
     async_add_entities(entities)
 
     @callback
@@ -58,7 +79,10 @@ class SolarForecastSensor(CoordinatorEntity[SolarForecastCoordinator], SensorEnt
     def __init__(self, coordinator: SolarForecastCoordinator, entry: SolarForecastConfigEntry, key: str) -> None:
         super().__init__(coordinator)
         self._key = key
+        self._entry = entry
         device_class, unit, state_class, enabled, category = _META[key]
+        if key in _ROOF_KEYS:
+            self._attr_attribution = ATTRIBUTION_SONNENDACH
         if device_class is not None:
             self._attr_device_class = device_class
         if unit is not None:
@@ -113,6 +137,12 @@ class SolarForecastSensor(CoordinatorEntity[SolarForecastCoordinator], SensorEnt
         if key == "peak_time_today":
             peak = snap.peak(self._day(0))
             return peak.start + timedelta(minutes=30) if peak and peak.power_kw > 0 else None
+        if key == "typical_day_energy":
+            return _kwh(typical_day_wh(self._entry, self._day(0)))
+        if key == "forecast_vs_typical":
+            typical = typical_day_wh(self._entry, self._day(0))
+            today = snap.day_energy_wh(self._day(0))
+            return round(today / typical * 100) if typical and today is not None else None
         if key == "run":
             return snap.run
         if key == "requests_today":
@@ -132,6 +162,14 @@ class SolarForecastSensor(CoordinatorEntity[SolarForecastCoordinator], SensorEnt
             }
         if self._key == "run":
             return {"fetched": snap.fetched.isoformat() if snap.fetched else None, "missing": snap.missing}
+        if self._key == "typical_day_energy":
+            today = self._day(0)
+            return {
+                "typical_tomorrow": _kwh(typical_day_wh(self._entry, self._day(1))),
+                "typical_month_total": _kwh((typical_day_wh(self._entry, today) or 0) * monthrange(today.year, today.month)[1]),
+                "roof_area_m2": self._entry.data.get("roof_area"),
+                "roof_suitability_class": self._entry.data.get("roof_class"),
+            }
         return None
 
 

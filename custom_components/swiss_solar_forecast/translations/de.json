@@ -3,11 +3,27 @@
     "step": {
       "user": {
         "title": "Swiss Solar Forecast",
-        "description": "Wo steht die Anlage, und wie liegt die Modulfläche? Der Standort von Home Assistant ist vorausgefüllt; Marker verschieben oder Ort bzw. PLZ suchen. Ein Eintrag ist eine Modulfläche: für ein Dach in eine andere Richtung einen zweiten Eintrag anlegen. Azimut ist die Himmelsrichtung, in die die Module zeigen (0 Nord, 90 Ost, 180 Süd, 270 West); Neigung ist der Winkel zur Horizontalen. Verluste umfassen Verkabelung, Wechselrichter, Verschmutzung und Mismatch (14 % ist ein üblicher Wert). Die Wechselrichter-Grenze kappt die AC-Leistung (0 = keine). Der Dämpfungsfaktor skaliert das Ergebnis, zum Abgleich mit dem echten Ertrag.",
+        "description": "Wo steht die Anlage? Der Standort von Home Assistant ist vorausgefüllt: Marker aufs Dach schieben oder eine Strassenadresse eingeben (das amtliche Adressregister kennt jede Adresse der Schweiz). Der nächste Schritt listet die Dachflächen dieses Gebäudes aus dem Sonnendach-Kataster des Bundesamts für Energie mit Ausrichtung, Neigung, Fläche und Eignung; du wählst deine oder erfasst eine Fläche von Hand. Ein Eintrag ist eine Dachfläche: für ein Dach in eine andere Richtung einen zweiten Eintrag anlegen.",
         "data": {
-          "location": "Standort",
-          "search": "Ort oder PLZ (optional; die Suche ersetzt den Kartenstandort)",
-          "name": "Name der Anlage oder Modulfläche",
+          "name": "Name der Anlage oder Dachfläche",
+          "location": "Standort (Marker auf dem Dach)",
+          "search": "Strassenadresse (optional; ersetzt den Marker)"
+        }
+      },
+      "address": {
+        "title": "Adresse wählen",
+        "description": "Mehrere Adressen passen. Wähle deine.",
+        "data": { "search": "Adresse" }
+      },
+      "roof": {
+        "title": "Dachfläche",
+        "description": "{count} Dachfläche(n) bei {place} im Sonnendach-Kataster, die grösste zuerst: Ausrichtung, Neigung, Fläche, Eignungsklasse (1 gering … 5 top) und der langjährige Stromertrag der ganzen Fläche. Wähle deine; der letzte Eintrag (—) erfasst eine Fläche von Hand, für ein Dach, das der Kataster nicht kennt, oder eine Freiflächenanlage.",
+        "data": { "roof": "Dachfläche" }
+      },
+      "plane": {
+        "title": "Die Werte der Fläche",
+        "description": "Dach: {roof}. Ausrichtung und Neigung kommen aus dem Kataster; korrigiere sie, wenn du es besser weisst. Trag die installierte Spitzenleistung dieser Fläche in kWp ein (die Katasterfläche fasst mit modernen Modulen etwa {kwp_hint} kWp). Verluste umfassen Verkabelung, Wechselrichter, Verschmutzung und Mismatch (14 % ist ein üblicher Wert). Die Wechselrichter-Grenze kappt die AC-Leistung (0 = keine). Der Dämpfungsfaktor skaliert das Ergebnis, zum Abgleich mit dem echten Ertrag.",
+        "data": {
           "kwp": "Spitzenleistung der Fläche (kWp)",
           "azimuth": "Azimut (0 Nord, 90 Ost, 180 Süd, 270 West)",
           "tilt": "Neigung zur Horizontalen (0 flach, 90 senkrecht)",
@@ -16,49 +32,52 @@
           "damping": "Dämpfungsfaktor (1 = wie berechnet)"
         }
       },
-      "search": {
-        "title": "Ort wählen",
-        "description": "Die Prognosepunkte, die zur Suche passen.",
-        "data": { "point": "Ort" }
-      },
-      "place": {
-        "title": "Prognosepunkt",
-        "description": "Die MeteoSchweiz-Prognosepunkte in der Nähe des Standorts, der nächste zuerst. Den Punkt wählen, der zum Ort passt; seine Strahlungsprognose speist die Modulfläche.",
-        "data": { "point": "Prognosepunkt" }
-      },
       "reconfigure": {
         "title": "Anlage verschieben",
-        "description": "Marker verschieben oder einen anderen Ort bzw. eine PLZ suchen; der Prognosepunkt wird im nächsten Schritt gewählt. Der Eintrag behält seine Entitäten, IDs und den Verlauf. Die Modulfläche selbst wird unter Konfigurieren geändert.",
+        "description": "Marker verschieben oder eine andere Adresse eingeben; die Dachflächen dort werden als Nächstes gelistet, dann die Werte. Der Eintrag behält seine Entitäten, IDs und den Verlauf.",
         "data": {
-          "location": "Standort",
-          "search": "Ort oder PLZ (optional; die Suche ersetzt den Kartenstandort)"
+          "location": "Standort (Marker auf dem Dach)",
+          "search": "Strassenadresse (optional; ersetzt den Marker)"
         }
       },
-      "reconfigure_search": {
-        "title": "Ort wählen",
-        "description": "Die Prognosepunkte, die zur Suche passen.",
-        "data": { "point": "Ort" }
+      "reconfigure_address": {
+        "title": "Adresse wählen",
+        "description": "Mehrere Adressen passen. Wähle deine.",
+        "data": { "search": "Adresse" }
       },
-      "reconfigure_place": {
-        "title": "Prognosepunkt",
-        "description": "Die MeteoSchweiz-Prognosepunkte in der Nähe des Standorts, der nächste zuerst.",
-        "data": { "point": "Prognosepunkt" }
+      "reconfigure_roof": {
+        "title": "Dachfläche",
+        "description": "{count} Dachfläche(n) bei {place} im Sonnendach-Kataster, die grösste zuerst. Wähle deine, oder den letzten Eintrag (—), um die Fläche von Hand zu erfassen.",
+        "data": { "roof": "Dachfläche" }
+      },
+      "reconfigure_plane": {
+        "title": "Die Werte der Fläche",
+        "description": "Dach: {roof}. Ausrichtung und Neigung kommen aus dem Kataster; die übrigen Werte sind die aktuellen des Eintrags.",
+        "data": {
+          "kwp": "Spitzenleistung der Fläche (kWp)",
+          "azimuth": "Azimut (0 Nord, 90 Ost, 180 Süd, 270 West)",
+          "tilt": "Neigung zur Horizontalen (0 flach, 90 senkrecht)",
+          "losses": "Systemverluste",
+          "inverter_kw": "Wechselrichter-Grenze AC (0 = keine)",
+          "damping": "Dämpfungsfaktor (1 = wie berechnet)"
+        }
       }
     },
     "error": {
-      "cannot_connect": "Die Open Data von MeteoSchweiz konnten nicht gelesen werden. Internetverbindung prüfen und erneut versuchen.",
-      "no_match": "Kein Ort und keine PLZ passt zur Suche."
+      "cannot_connect": "Der Geodienst des Bundes war nicht erreichbar. Internetverbindung prüfen und erneut versuchen.",
+      "no_match": "Keine Adresse passt zum Text. Strasse und Ort versuchen, oder stattdessen den Marker verschieben."
     },
     "abort": {
-      "already_configured": "Eine Modulfläche mit dieser Ausrichtung und Neigung ist für diesen Prognosepunkt schon eingerichtet.",
+      "already_configured": "Diese Dachfläche ist schon eingerichtet.",
+      "cannot_connect": "Die Open Data von MeteoSchweiz konnten nicht gelesen werden. Internetverbindung prüfen und erneut versuchen.",
       "reconfigure_successful": "Die Anlage wurde verschoben."
     }
   },
   "options": {
     "step": {
       "init": {
-        "title": "Modulfläche",
-        "description": "Spitzenleistung, Ausrichtung, Neigung, Verluste, Wechselrichter-Grenze und Dämpfung dieser Fläche. Eine Änderung lädt den Eintrag neu; IDs und Verlauf bleiben. Dämpfung zum Abgleich: liegt die Prognose über ein paar sonnige Wochen 10 % zu hoch, 0.9 setzen.",
+        "title": "Die Werte der Fläche",
+        "description": "Spitzenleistung, Ausrichtung, Neigung, Verluste, Wechselrichter-Grenze und Dämpfung dieser Fläche. Eine Änderung lädt den Eintrag neu; IDs und Verlauf bleiben. Dämpfung zum Abgleich: liegt die Prognose über ein paar sonnige Wochen 10 % zu hoch, 0.9 setzen. Um die Anlage zu verschieben oder ein anderes Dach zu wählen, Neu konfigurieren im Menü des Eintrags nutzen.",
         "data": {
           "kwp": "Spitzenleistung der Fläche (kWp)",
           "azimuth": "Azimut (0 Nord, 90 Ost, 180 Süd, 270 West)",
@@ -81,6 +100,8 @@
       "peak_power_today": { "name": "Spitzenleistung heute" },
       "peak_time_today": { "name": "Spitzenzeit heute" },
       "peak_power_tomorrow": { "name": "Spitzenleistung morgen" },
+      "typical_day_energy": { "name": "Normaler Tag (Kataster)" },
+      "forecast_vs_typical": { "name": "Prognose zu normalem Tag" },
       "run": { "name": "Prognoselauf" },
       "requests_today": { "name": "Abfragen heute" },
       "bytes_today": { "name": "Gelesene Daten heute" }

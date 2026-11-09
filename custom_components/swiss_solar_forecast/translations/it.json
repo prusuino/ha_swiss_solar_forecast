@@ -3,11 +3,27 @@
     "step": {
       "user": {
         "title": "Swiss Solar Forecast",
-        "description": "Dove si trova l'impianto e come è orientata la falda dei moduli? La posizione di Home Assistant è precompilata; spostate il marcatore o cercate una località o un NPA. Una voce corrisponde a una falda: per un tetto orientato diversamente create una seconda voce. L'azimut è la direzione verso cui guardano i moduli (0 nord, 90 est, 180 sud, 270 ovest); l'inclinazione è l'angolo rispetto all'orizzontale. Le perdite comprendono cablaggio, inverter, sporcizia e mismatch (14 % è un valore usuale). Il limite dell'inverter taglia la potenza AC (0 = nessuno). Il fattore di smorzamento scala il risultato, per la taratura sulla resa reale.",
+        "description": "Dove si trova l'impianto? La posizione di Home Assistant è precompilata: spostate il marcatore sul tetto o inserite un indirizzo (il registro federale degli indirizzi conosce ogni indirizzo della Svizzera). Il passo successivo elenca le falde di quell'edificio dal catasto Tettosolare dell'Ufficio federale dell'energia, con orientamento, inclinazione, superficie e idoneità; scegliete la vostra o inserite una falda a mano. Una voce corrisponde a una falda: per un tetto orientato diversamente create una seconda voce.",
         "data": {
-          "location": "Posizione",
-          "search": "Località o NPA (facoltativo; la ricerca sostituisce la posizione sulla mappa)",
           "name": "Nome dell'impianto o della falda",
+          "location": "Posizione (marcatore sul tetto)",
+          "search": "Indirizzo (facoltativo; sostituisce il marcatore)"
+        }
+      },
+      "address": {
+        "title": "Scegliere l'indirizzo",
+        "description": "Più indirizzi corrispondono. Scegliete il vostro.",
+        "data": { "search": "Indirizzo" }
+      },
+      "roof": {
+        "title": "Falda del tetto",
+        "description": "{count} falda/e a {place} nel catasto Tettosolare, la più grande per prima: orientamento, inclinazione, superficie, classe di idoneità (1 bassa … 5 ottima) e resa elettrica a lungo termine dell'intera falda. Scegliete la vostra; l'ultima voce (—) permette di inserire una falda a mano, per un tetto sconosciuto al catasto o un impianto a terra.",
+        "data": { "roof": "Falda del tetto" }
+      },
+      "plane": {
+        "title": "I valori della falda",
+        "description": "Tetto: {roof}. Orientamento e inclinazione vengono dal catasto; correggeteli se sapete meglio. Inserite la potenza di picco installata di questa falda in kWp (la superficie del catasto ospiterebbe circa {kwp_hint} kWp di moduli moderni). Le perdite comprendono cablaggio, inverter, sporcizia e mismatch (14 % è un valore usuale). Il limite dell'inverter taglia la potenza AC (0 = nessuno). Il fattore di smorzamento scala il risultato, per la taratura sulla resa reale.",
+        "data": {
           "kwp": "Potenza di picco della falda (kWp)",
           "azimuth": "Azimut (0 nord, 90 est, 180 sud, 270 ovest)",
           "tilt": "Inclinazione rispetto all'orizzontale (0 piatto, 90 verticale)",
@@ -16,49 +32,52 @@
           "damping": "Fattore di smorzamento (1 = come calcolato)"
         }
       },
-      "search": {
-        "title": "Scegliere la località",
-        "description": "I punti di previsione corrispondenti alla ricerca.",
-        "data": { "point": "Località" }
-      },
-      "place": {
-        "title": "Punto di previsione",
-        "description": "I punti di previsione MeteoSvizzera più vicini alla posizione, il più vicino per primo. Scegliete quello che corrisponde al vostro luogo; la sua previsione di radiazione alimenta la falda.",
-        "data": { "point": "Punto di previsione" }
-      },
       "reconfigure": {
         "title": "Spostare l'impianto",
-        "description": "Spostate il marcatore o cercate un'altra località o NPA; il punto di previsione viene scelto nel passo successivo. La voce mantiene le entità, i loro ID e la cronologia. La falda si modifica in Configura.",
+        "description": "Spostate il marcatore o inserite un altro indirizzo; le falde presenti vengono elencate subito dopo, poi i valori. La voce mantiene le entità, i loro ID e la cronologia.",
         "data": {
-          "location": "Posizione",
-          "search": "Località o NPA (facoltativo; la ricerca sostituisce la posizione sulla mappa)"
+          "location": "Posizione (marcatore sul tetto)",
+          "search": "Indirizzo (facoltativo; sostituisce il marcatore)"
         }
       },
-      "reconfigure_search": {
-        "title": "Scegliere la località",
-        "description": "I punti di previsione corrispondenti alla ricerca.",
-        "data": { "point": "Località" }
+      "reconfigure_address": {
+        "title": "Scegliere l'indirizzo",
+        "description": "Più indirizzi corrispondono. Scegliete il vostro.",
+        "data": { "search": "Indirizzo" }
       },
-      "reconfigure_place": {
-        "title": "Punto di previsione",
-        "description": "I punti di previsione MeteoSvizzera più vicini alla posizione, il più vicino per primo.",
-        "data": { "point": "Punto di previsione" }
+      "reconfigure_roof": {
+        "title": "Falda del tetto",
+        "description": "{count} falda/e a {place} nel catasto Tettosolare, la più grande per prima. Scegliete la vostra, o l'ultima voce (—) per inserire la falda a mano.",
+        "data": { "roof": "Falda del tetto" }
+      },
+      "reconfigure_plane": {
+        "title": "I valori della falda",
+        "description": "Tetto: {roof}. Orientamento e inclinazione vengono dal catasto; gli altri valori sono quelli attuali della voce.",
+        "data": {
+          "kwp": "Potenza di picco della falda (kWp)",
+          "azimuth": "Azimut (0 nord, 90 est, 180 sud, 270 ovest)",
+          "tilt": "Inclinazione rispetto all'orizzontale (0 piatto, 90 verticale)",
+          "losses": "Perdite di sistema",
+          "inverter_kw": "Limite AC dell'inverter (0 = nessuno)",
+          "damping": "Fattore di smorzamento (1 = come calcolato)"
+        }
       }
     },
     "error": {
-      "cannot_connect": "I dati aperti di MeteoSvizzera non sono stati letti. Verificate la connessione internet e riprovate.",
-      "no_match": "Nessuna località o NPA corrisponde alla ricerca."
+      "cannot_connect": "Il servizio geografico federale non ha risposto. Verificate la connessione internet e riprovate.",
+      "no_match": "Nessun indirizzo corrisponde al testo. Provate con via e località, oppure spostate il marcatore."
     },
     "abort": {
-      "already_configured": "Una falda con questo orientamento e questa inclinazione è già configurata per questo punto di previsione.",
+      "already_configured": "Questa falda è già configurata.",
+      "cannot_connect": "I dati aperti di MeteoSvizzera non sono stati letti. Verificate la connessione internet e riprovate.",
       "reconfigure_successful": "L'impianto è stato spostato."
     }
   },
   "options": {
     "step": {
       "init": {
-        "title": "Falda dei moduli",
-        "description": "Potenza di picco, orientamento, inclinazione, perdite, limite dell'inverter e smorzamento di questa falda. Una modifica ricarica la voce; ID e cronologia restano. Smorzamento per la taratura: se la previsione è del 10 % troppo alta su alcune settimane di sole, impostate 0.9.",
+        "title": "I valori della falda",
+        "description": "Potenza di picco, orientamento, inclinazione, perdite, limite dell'inverter e smorzamento di questa falda. Una modifica ricarica la voce; ID e cronologia restano. Smorzamento per la taratura: se la previsione è del 10 % troppo alta su alcune settimane di sole, impostate 0.9. Per spostare l'impianto o scegliere un altro tetto, usate Riconfigura nel menu della voce.",
         "data": {
           "kwp": "Potenza di picco della falda (kWp)",
           "azimuth": "Azimut (0 nord, 90 est, 180 sud, 270 ovest)",
@@ -81,6 +100,8 @@
       "peak_power_today": { "name": "Potenza massima oggi" },
       "peak_time_today": { "name": "Ora del massimo oggi" },
       "peak_power_tomorrow": { "name": "Potenza massima domani" },
+      "typical_day_energy": { "name": "Giornata tipo (catasto)" },
+      "forecast_vs_typical": { "name": "Previsione vs giornata tipo" },
       "run": { "name": "Run di previsione" },
       "requests_today": { "name": "Richieste oggi" },
       "bytes_today": { "name": "Dati letti oggi" }

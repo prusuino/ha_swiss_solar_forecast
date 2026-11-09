@@ -3,11 +3,27 @@
     "step": {
       "user": {
         "title": "Swiss Solar Forecast",
-        "description": "Where is the plant, and what does the module plane look like? Your Home Assistant location is pre-filled; move the marker or search for a place or postal code. One entry is one plane: set up a second entry for a roof facing another way. Azimuth is the compass bearing the modules face (0 north, 90 east, 180 south, 270 west); tilt is the inclination from horizontal. Losses cover wiring, inverter, soiling and mismatch (14 % is a usual figure). The inverter limit clips the AC power (0 = none). Damping scales the result, for calibration against your real yield.",
+        "description": "Where is the plant? Your Home Assistant location is pre-filled: move the marker onto the roof, or type a street address (the federal address register knows every address of Switzerland). The next step lists the roof planes of that building from the Sonnendach cadastre of the Federal Office of Energy, with orientation, tilt, area and suitability; you pick yours or enter a plane by hand. One entry is one plane: set up a second entry for a roof facing another way.",
         "data": {
-          "location": "Location",
-          "search": "Place or postal code (optional; searching replaces the map location)",
           "name": "Name of the plant or plane",
+          "location": "Location (marker on the roof)",
+          "search": "Street address (optional; replaces the marker)"
+        }
+      },
+      "address": {
+        "title": "Choose the address",
+        "description": "Several addresses match. Pick yours.",
+        "data": { "search": "Address" }
+      },
+      "roof": {
+        "title": "Roof plane",
+        "description": "{count} roof plane(s) at {place} in the Sonnendach cadastre, largest first: orientation, tilt, area, suitability class (1 low … 5 top) and the long-term electricity yield of the whole plane. Pick yours; the last entry (—) lets you enter a plane by hand, for a roof the cadastre does not know or a ground-mounted plant.",
+        "data": { "roof": "Roof plane" }
+      },
+      "plane": {
+        "title": "The plane's figures",
+        "description": "Roof: {roof}. Orientation and tilt come from the cadastre; correct them if you know better. Enter the installed peak power of this plane in kWp (the cadastre's area would hold about {kwp_hint} kWp with modern modules). Losses cover wiring, inverter, soiling and mismatch (14 % is a usual figure). The inverter limit clips the AC power (0 = none). Damping scales the result, for calibration against your real yield.",
+        "data": {
           "kwp": "Peak power of the plane (kWp)",
           "azimuth": "Azimuth (0 north, 90 east, 180 south, 270 west)",
           "tilt": "Tilt from horizontal (0 flat, 90 vertical)",
@@ -16,49 +32,52 @@
           "damping": "Damping factor (1 = as computed)"
         }
       },
-      "search": {
-        "title": "Choose the place",
-        "description": "The forecast points matching your search.",
-        "data": { "point": "Place" }
-      },
-      "place": {
-        "title": "Forecast point",
-        "description": "The MeteoSwiss forecast points nearest to the location, nearest first. Pick the one that matches your place; its radiation forecast feeds the plane.",
-        "data": { "point": "Forecast point" }
-      },
       "reconfigure": {
         "title": "Move the plant",
-        "description": "Move the marker or search for another place or postal code; the forecast point is then picked in the next step. The entry keeps its entities, their ids and history. The plane itself is changed in Configure.",
+        "description": "Move the marker or type another address; the roof planes there are listed next, then the figures. The entry keeps its entities, their ids and history.",
         "data": {
-          "location": "Location",
-          "search": "Place or postal code (optional; searching replaces the map location)"
+          "location": "Location (marker on the roof)",
+          "search": "Street address (optional; replaces the marker)"
         }
       },
-      "reconfigure_search": {
-        "title": "Choose the place",
-        "description": "The forecast points matching your search.",
-        "data": { "point": "Place" }
+      "reconfigure_address": {
+        "title": "Choose the address",
+        "description": "Several addresses match. Pick yours.",
+        "data": { "search": "Address" }
       },
-      "reconfigure_place": {
-        "title": "Forecast point",
-        "description": "The MeteoSwiss forecast points nearest to the location, nearest first.",
-        "data": { "point": "Forecast point" }
+      "reconfigure_roof": {
+        "title": "Roof plane",
+        "description": "{count} roof plane(s) at {place} in the Sonnendach cadastre, largest first. Pick yours, or the last entry (—) to enter the plane by hand.",
+        "data": { "roof": "Roof plane" }
+      },
+      "reconfigure_plane": {
+        "title": "The plane's figures",
+        "description": "Roof: {roof}. Orientation and tilt come from the cadastre; the other figures are the entry's current ones.",
+        "data": {
+          "kwp": "Peak power of the plane (kWp)",
+          "azimuth": "Azimuth (0 north, 90 east, 180 south, 270 west)",
+          "tilt": "Tilt from horizontal (0 flat, 90 vertical)",
+          "losses": "System losses",
+          "inverter_kw": "Inverter AC limit (0 = none)",
+          "damping": "Damping factor (1 = as computed)"
+        }
       }
     },
     "error": {
-      "cannot_connect": "The MeteoSwiss open data could not be read. Check the internet connection and try again.",
-      "no_match": "No place or postal code matches the search."
+      "cannot_connect": "The federal geo service could not be reached. Check the internet connection and try again.",
+      "no_match": "No address matches the text. Try street and place, or move the marker instead."
     },
     "abort": {
-      "already_configured": "A plane with this orientation and tilt is already set up for this forecast point.",
+      "already_configured": "This roof plane is already set up.",
+      "cannot_connect": "The MeteoSwiss open data could not be read. Check the internet connection and try again.",
       "reconfigure_successful": "The plant has been moved."
     }
   },
   "options": {
     "step": {
       "init": {
-        "title": "Module plane",
-        "description": "Peak power, orientation, tilt, losses, inverter limit and damping of this plane. Changing a value reloads the entry; entity ids and history are kept. Use damping to calibrate: if the forecast is 10 % too high over a few sunny weeks, set 0.9.",
+        "title": "The plane's figures",
+        "description": "Peak power, orientation, tilt, losses, inverter limit and damping of this plane. Changing a value reloads the entry; entity ids and history are kept. Use damping to calibrate: if the forecast is 10 % too high over a few sunny weeks, set 0.9. To move the plant or pick another roof, use Reconfigure in the entry's menu.",
         "data": {
           "kwp": "Peak power of the plane (kWp)",
           "azimuth": "Azimuth (0 north, 90 east, 180 south, 270 west)",
@@ -81,6 +100,8 @@
       "peak_power_today": { "name": "Peak power today" },
       "peak_time_today": { "name": "Peak time today" },
       "peak_power_tomorrow": { "name": "Peak power tomorrow" },
+      "typical_day_energy": { "name": "Typical day (cadastre)" },
+      "forecast_vs_typical": { "name": "Forecast vs typical day" },
       "run": { "name": "Forecast run" },
       "requests_today": { "name": "Requests today" },
       "bytes_today": { "name": "Data read today" }

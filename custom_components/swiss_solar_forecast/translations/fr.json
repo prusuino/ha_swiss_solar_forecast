@@ -3,12 +3,28 @@
     "step": {
       "user": {
         "title": "Swiss Solar Forecast",
-        "description": "Où se trouve l'installation et comment est orienté le plan des modules ? La position de Home Assistant est préremplie ; déplacez le marqueur ou cherchez un lieu ou un NPA. Une entrée correspond à un plan : pour un toit orienté autrement, créez une seconde entrée. L'azimut est la direction vers laquelle les modules sont tournés (0 nord, 90 est, 180 sud, 270 ouest) ; l'inclinaison est l'angle par rapport à l'horizontale. Les pertes couvrent le câblage, l'onduleur, la salissure et le mismatch (14 % est une valeur courante). La limite de l'onduleur écrête la puissance AC (0 = aucune). Le facteur d'amortissement met le résultat à l'échelle, pour le calage sur le rendement réel.",
+        "description": "Où se trouve l'installation ? La position de Home Assistant est préremplie : déplacez le marqueur sur le toit ou saisissez une adresse (le registre fédéral des adresses connaît toutes les adresses de Suisse). L'étape suivante liste les pans de toit de ce bâtiment d'après le cadastre Toitsolaire de l'Office fédéral de l'énergie, avec orientation, inclinaison, surface et aptitude ; vous choisissez le vôtre ou saisissez un pan à la main. Une entrée correspond à un pan : créez une seconde entrée pour un toit orienté autrement.",
         "data": {
-          "location": "Position",
-          "search": "Lieu ou NPA (facultatif ; la recherche remplace la position de la carte)",
-          "name": "Nom de l'installation ou du plan",
-          "kwp": "Puissance crête du plan (kWc)",
+          "name": "Nom de l'installation ou du pan",
+          "location": "Position (marqueur sur le toit)",
+          "search": "Adresse (facultatif ; remplace le marqueur)"
+        }
+      },
+      "address": {
+        "title": "Choisir l'adresse",
+        "description": "Plusieurs adresses correspondent. Choisissez la vôtre.",
+        "data": { "search": "Adresse" }
+      },
+      "roof": {
+        "title": "Pan de toit",
+        "description": "{count} pan(s) de toit à {place} dans le cadastre Toitsolaire, le plus grand en premier : orientation, inclinaison, surface, classe d'aptitude (1 faible … 5 excellente) et rendement électrique à long terme du pan entier. Choisissez le vôtre ; la dernière entrée (—) permet de saisir un pan à la main, pour un toit inconnu du cadastre ou une installation au sol.",
+        "data": { "roof": "Pan de toit" }
+      },
+      "plane": {
+        "title": "Les valeurs du pan",
+        "description": "Toit : {roof}. L'orientation et l'inclinaison viennent du cadastre ; corrigez-les si vous savez mieux. Saisissez la puissance crête installée de ce pan en kWc (la surface du cadastre accueillerait environ {kwp_hint} kWc de modules modernes). Les pertes couvrent le câblage, l'onduleur, la salissure et le mismatch (14 % est une valeur courante). La limite de l'onduleur écrête la puissance AC (0 = aucune). Le facteur d'amortissement met le résultat à l'échelle, pour le calage sur le rendement réel.",
+        "data": {
+          "kwp": "Puissance crête du pan (kWc)",
           "azimuth": "Azimut (0 nord, 90 est, 180 sud, 270 ouest)",
           "tilt": "Inclinaison par rapport à l'horizontale (0 plat, 90 vertical)",
           "losses": "Pertes du système",
@@ -16,51 +32,54 @@
           "damping": "Facteur d'amortissement (1 = tel que calculé)"
         }
       },
-      "search": {
-        "title": "Choisir le lieu",
-        "description": "Les points de prévision correspondant à la recherche.",
-        "data": { "point": "Lieu" }
-      },
-      "place": {
-        "title": "Point de prévision",
-        "description": "Les points de prévision MétéoSuisse les plus proches de la position, le plus proche en premier. Choisissez celui qui correspond à votre lieu ; sa prévision de rayonnement alimente le plan.",
-        "data": { "point": "Point de prévision" }
-      },
       "reconfigure": {
         "title": "Déplacer l'installation",
-        "description": "Déplacez le marqueur ou cherchez un autre lieu ou NPA ; le point de prévision est choisi à l'étape suivante. L'entrée garde ses entités, leurs identifiants et l'historique. Le plan lui-même se modifie dans Configurer.",
+        "description": "Déplacez le marqueur ou saisissez une autre adresse ; les pans de toit y sont listés ensuite, puis les valeurs. L'entrée garde ses entités, leurs identifiants et l'historique.",
         "data": {
-          "location": "Position",
-          "search": "Lieu ou NPA (facultatif ; la recherche remplace la position de la carte)"
+          "location": "Position (marqueur sur le toit)",
+          "search": "Adresse (facultatif ; remplace le marqueur)"
         }
       },
-      "reconfigure_search": {
-        "title": "Choisir le lieu",
-        "description": "Les points de prévision correspondant à la recherche.",
-        "data": { "point": "Lieu" }
+      "reconfigure_address": {
+        "title": "Choisir l'adresse",
+        "description": "Plusieurs adresses correspondent. Choisissez la vôtre.",
+        "data": { "search": "Adresse" }
       },
-      "reconfigure_place": {
-        "title": "Point de prévision",
-        "description": "Les points de prévision MétéoSuisse les plus proches de la position, le plus proche en premier.",
-        "data": { "point": "Point de prévision" }
+      "reconfigure_roof": {
+        "title": "Pan de toit",
+        "description": "{count} pan(s) de toit à {place} dans le cadastre Toitsolaire, le plus grand en premier. Choisissez le vôtre, ou la dernière entrée (—) pour saisir le pan à la main.",
+        "data": { "roof": "Pan de toit" }
+      },
+      "reconfigure_plane": {
+        "title": "Les valeurs du pan",
+        "description": "Toit : {roof}. L'orientation et l'inclinaison viennent du cadastre ; les autres valeurs sont celles de l'entrée.",
+        "data": {
+          "kwp": "Puissance crête du pan (kWc)",
+          "azimuth": "Azimut (0 nord, 90 est, 180 sud, 270 ouest)",
+          "tilt": "Inclinaison par rapport à l'horizontale (0 plat, 90 vertical)",
+          "losses": "Pertes du système",
+          "inverter_kw": "Limite AC de l'onduleur (0 = aucune)",
+          "damping": "Facteur d'amortissement (1 = tel que calculé)"
+        }
       }
     },
     "error": {
-      "cannot_connect": "Les données ouvertes de MétéoSuisse n'ont pas pu être lues. Vérifiez la connexion internet et réessayez.",
-      "no_match": "Aucun lieu ni NPA ne correspond à la recherche."
+      "cannot_connect": "Le service géographique fédéral n'a pas répondu. Vérifiez la connexion internet et réessayez.",
+      "no_match": "Aucune adresse ne correspond au texte. Essayez rue et localité, ou déplacez plutôt le marqueur."
     },
     "abort": {
-      "already_configured": "Un plan avec cette orientation et cette inclinaison est déjà configuré pour ce point de prévision.",
+      "already_configured": "Ce pan de toit est déjà configuré.",
+      "cannot_connect": "Les données ouvertes de MétéoSuisse n'ont pas pu être lues. Vérifiez la connexion internet et réessayez.",
       "reconfigure_successful": "L'installation a été déplacée."
     }
   },
   "options": {
     "step": {
       "init": {
-        "title": "Plan des modules",
-        "description": "Puissance crête, orientation, inclinaison, pertes, limite de l'onduleur et amortissement de ce plan. Une modification recharge l'entrée ; identifiants et historique sont conservés. Amortissement pour le calage : si la prévision est 10 % trop haute sur quelques semaines ensoleillées, mettez 0.9.",
+        "title": "Les valeurs du pan",
+        "description": "Puissance crête, orientation, inclinaison, pertes, limite de l'onduleur et amortissement de ce pan. Une modification recharge l'entrée ; identifiants et historique sont conservés. Amortissement pour le calage : si la prévision est 10 % trop haute sur quelques semaines ensoleillées, mettez 0.9. Pour déplacer l'installation ou choisir un autre toit, utilisez Reconfigurer dans le menu de l'entrée.",
         "data": {
-          "kwp": "Puissance crête du plan (kWc)",
+          "kwp": "Puissance crête du pan (kWc)",
           "azimuth": "Azimut (0 nord, 90 est, 180 sud, 270 ouest)",
           "tilt": "Inclinaison par rapport à l'horizontale (0 plat, 90 vertical)",
           "losses": "Pertes du système",
@@ -81,6 +100,8 @@
       "peak_power_today": { "name": "Puissance maximale aujourd'hui" },
       "peak_time_today": { "name": "Heure du maximum aujourd'hui" },
       "peak_power_tomorrow": { "name": "Puissance maximale demain" },
+      "typical_day_energy": { "name": "Journée type (cadastre)" },
+      "forecast_vs_typical": { "name": "Prévision vs journée type" },
       "run": { "name": "Run de prévision" },
       "requests_today": { "name": "Requêtes aujourd'hui" },
       "bytes_today": { "name": "Données lues aujourd'hui" }
