@@ -3,9 +3,9 @@
     "step": {
       "user": {
         "title": "Swiss Solar Forecast",
-        "description": "Dove si trova l'impianto? La posizione di Home Assistant è precompilata: spostate il marcatore sul tetto o inserite un indirizzo (il registro federale degli indirizzi conosce ogni indirizzo della Svizzera). Il passo successivo elenca le falde di quell'edificio dal catasto Tettosolare dell'Ufficio federale dell'energia, con orientamento, inclinazione, superficie e idoneità; scegliete la vostra o inserite una falda a mano. Una voce corrisponde a una falda: per un tetto orientato diversamente create una seconda voce.",
+        "description": "Dove si trova l'impianto? La posizione di Home Assistant è precompilata: spostate il marcatore sul tetto o inserite un indirizzo (il registro federale degli indirizzi conosce ogni indirizzo della Svizzera). Il passo successivo elenca le falde di quell'edificio dal catasto Tettosolare dell'Ufficio federale dell'energia; spuntate tutte le falde con moduli e inserite poi i valori falda per falda. Una voce corrisponde all'intero impianto.",
         "data": {
-          "name": "Nome dell'impianto o della falda",
+          "name": "Nome dell'impianto",
           "location": "Posizione (marcatore sul tetto)",
           "search": "Indirizzo (facoltativo; sostituisce il marcatore)"
         }
@@ -15,15 +15,16 @@
         "description": "Più indirizzi corrispondono. Scegliete il vostro.",
         "data": { "search": "Indirizzo" }
       },
-      "roof": {
-        "title": "Falda del tetto",
-        "description": "{count} falda/e a {place} nel catasto Tettosolare, la più grande per prima: orientamento, inclinazione, superficie, classe di idoneità (1 bassa … 5 ottima) e resa elettrica a lungo termine dell'intera falda. Scegliete la vostra; l'ultima voce (—) permette di inserire una falda a mano, per un tetto sconosciuto al catasto o un impianto a terra.",
-        "data": { "roof": "Falda del tetto" }
+      "roofs": {
+        "title": "Falde del tetto",
+        "description": "{count} falda/e a {place} nel catasto Tettosolare, la più grande per prima: orientamento, inclinazione, superficie, classe di idoneità (1 bassa … 5 ottima) e resa elettrica a lungo termine dell'intera falda. Spuntate ogni falda con moduli. L'ultima voce (✎) aggiunge una falda inserita a mano, per un tetto sconosciuto al catasto, un garage su un altro edificio o un impianto a terra; spuntatela insieme alle altre se servono entrambe.",
+        "data": { "roofs": "Falde con moduli" }
       },
       "plane": {
-        "title": "I valori della falda",
-        "description": "Tetto: {roof}. Orientamento e inclinazione vengono dal catasto; correggeteli se sapete meglio. Inserite la potenza di picco installata di questa falda in kWp (la superficie del catasto ospiterebbe circa {kwp_hint} kWp di moduli moderni). Le perdite comprendono cablaggio, inverter, sporcizia e mismatch (14 % è un valore usuale). Il limite dell'inverter taglia la potenza AC (0 = nessuno). Il fattore di smorzamento scala il risultato, per la taratura sulla resa reale.",
+        "title": "Falda {index} di {total}",
+        "description": "Tetto: {roof}. Orientamento e inclinazione vengono dal catasto; correggeteli se sapete meglio. Inserite la potenza di picco installata di questa falda in kWp (la superficie del catasto ospiterebbe circa {kwp_hint} kWp di moduli moderni). Le perdite comprendono cablaggio, inverter, sporcizia e mismatch (14 % è un valore usuale). Il limite dell'inverter taglia la potenza AC di questa falda (0 = nessuno). Il fattore di smorzamento scala il risultato, per la taratura sulla resa reale.",
         "data": {
+          "label": "Nome della falda",
           "kwp": "Potenza di picco della falda (kWp)",
           "azimuth": "Azimut (0 nord, 90 est, 180 sud, 270 ovest)",
           "tilt": "Inclinazione rispetto all'orizzontale (0 piatto, 90 verticale)",
@@ -33,8 +34,8 @@
         }
       },
       "reconfigure": {
-        "title": "Spostare l'impianto",
-        "description": "Spostate il marcatore o inserite un altro indirizzo; le falde presenti vengono elencate subito dopo, poi i valori. La voce mantiene le entità, i loro ID e la cronologia.",
+        "title": "Spostare l'impianto o cambiare le falde",
+        "description": "Spostate il marcatore o inserite un altro indirizzo; le falde presenti vengono elencate subito dopo (quelle attuali sono già spuntate), poi i valori di ogni falda precompilati con quelli attuali. La voce mantiene le entità, i loro ID e la cronologia.",
         "data": {
           "location": "Posizione (marcatore sul tetto)",
           "search": "Indirizzo (facoltativo; sostituisce il marcatore)"
@@ -45,15 +46,16 @@
         "description": "Più indirizzi corrispondono. Scegliete il vostro.",
         "data": { "search": "Indirizzo" }
       },
-      "reconfigure_roof": {
-        "title": "Falda del tetto",
-        "description": "{count} falda/e a {place} nel catasto Tettosolare, la più grande per prima. Scegliete la vostra, o l'ultima voce (—) per inserire la falda a mano.",
-        "data": { "roof": "Falda del tetto" }
+      "reconfigure_roofs": {
+        "title": "Falde del tetto",
+        "description": "{count} falda/e a {place} nel catasto Tettosolare, la più grande per prima. Spuntate ogni falda con moduli; l'ultima voce (✎) aggiunge una falda inserita a mano.",
+        "data": { "roofs": "Falde con moduli" }
       },
       "reconfigure_plane": {
-        "title": "I valori della falda",
-        "description": "Tetto: {roof}. Orientamento e inclinazione vengono dal catasto; gli altri valori sono quelli attuali della voce.",
+        "title": "Falda {index} di {total}",
+        "description": "Tetto: {roof}. I valori sono quelli attuali della falda se l'impianto aveva già questo tetto, altrimenti il suggerimento del catasto.",
         "data": {
+          "label": "Nome della falda",
           "kwp": "Potenza di picco della falda (kWp)",
           "azimuth": "Azimut (0 nord, 90 est, 180 sud, 270 ovest)",
           "tilt": "Inclinazione rispetto all'orizzontale (0 piatto, 90 verticale)",
@@ -65,20 +67,27 @@
     },
     "error": {
       "cannot_connect": "Il servizio geografico federale non ha risposto. Verificate la connessione internet e riprovate.",
-      "no_match": "Nessun indirizzo corrisponde al testo. Provate con via e località, oppure spostate il marcatore."
+      "no_match": "Nessun indirizzo corrisponde al testo. Provate con via e località, oppure spostate il marcatore.",
+      "pick_one": "Spuntate almeno una falda, o la matita per una falda inserita a mano."
     },
     "abort": {
-      "already_configured": "Questa falda è già configurata.",
+      "already_configured": "In questo luogo è già configurato un impianto. Modificate le sue falde con Riconfigura.",
       "cannot_connect": "I dati aperti di MeteoSvizzera non sono stati letti. Verificate la connessione internet e riprovate.",
-      "reconfigure_successful": "L'impianto è stato spostato."
+      "reconfigure_successful": "L'impianto è stato aggiornato."
     }
   },
   "options": {
     "step": {
       "init": {
-        "title": "I valori della falda",
-        "description": "Potenza di picco, orientamento, inclinazione, perdite, limite dell'inverter e smorzamento di questa falda. Una modifica ricarica la voce; ID e cronologia restano. Smorzamento per la taratura: se la previsione è del 10 % troppo alta su alcune settimane di sole, impostate 0.9. Per spostare l'impianto o scegliere un altro tetto, usate Riconfigura nel menu della voce.",
+        "title": "Quale falda?",
+        "description": "Le falde dell'impianto. Scegliete quella di cui volete cambiare i valori. Per aggiungere o togliere falde o spostare l'impianto, usate Riconfigura nel menu della voce.",
+        "data": { "plane": "Falda" }
+      },
+      "plane": {
+        "title": "Falda {plane}",
+        "description": "Potenza di picco, orientamento, inclinazione, perdite, limite dell'inverter e smorzamento di questa falda. Una modifica ricarica la voce; ID e cronologia restano. Smorzamento per la taratura: se la previsione è del 10 % troppo alta su alcune settimane di sole, impostate 0.9.",
         "data": {
+          "label": "Nome della falda",
           "kwp": "Potenza di picco della falda (kWp)",
           "azimuth": "Azimut (0 nord, 90 est, 180 sud, 270 ovest)",
           "tilt": "Inclinazione rispetto all'orizzontale (0 piatto, 90 verticale)",
@@ -87,6 +96,9 @@
           "damping": "Fattore di smorzamento (1 = come calcolato)"
         }
       }
+    },
+    "abort": {
+      "no_planes": "Questo impianto non ha falde; configuratelo di nuovo."
     }
   },
   "entity": {
@@ -104,7 +116,13 @@
       "forecast_vs_typical": { "name": "Previsione vs giornata tipo" },
       "run": { "name": "Run di previsione" },
       "requests_today": { "name": "Richieste oggi" },
-      "bytes_today": { "name": "Dati letti oggi" }
+      "bytes_today": { "name": "Dati letti oggi" },
+      "plane_energy_today": { "name": "{plane} energia oggi" },
+      "plane_energy_tomorrow": { "name": "{plane} energia domani" },
+      "plane_power_now": { "name": "{plane} potenza attuale" },
+      "plane_peak_power_today": { "name": "{plane} potenza massima oggi" },
+      "plane_typical_day_energy": { "name": "{plane} giornata tipo" },
+      "plane_forecast_vs_typical": { "name": "{plane} previsione vs giornata tipo" }
     }
   },
   "issues": {

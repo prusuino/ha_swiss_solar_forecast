@@ -1,8 +1,10 @@
-"""Sensors: the energy of today, tomorrow and the rest of today, the power
-of the current and the next hour, today's peak, and diagnostics about the
-run and the traffic."""
+"""Sensors of the plant (the planes' sum) and of every plane: energy of
+today, tomorrow and the rest of today, power now and next hour, today's
+peak, the cadastre's typical day, and diagnostics about the run and the
+traffic."""
 from __future__ import annotations
 
+from calendar import monthrange
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -15,12 +17,10 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
 from . import SolarForecastConfigEntry
-from .const import ATTRIBUTION, CONF_ROOF_IRRADIATION, CONF_ROOF_MONTHLY, DOMAIN
-from .coordinator import ForecastSnapshot, SolarForecastCoordinator, plane_from_entry
+from .const import ATTRIBUTION, DOMAIN
+from .coordinator import ForecastSnapshot, PlaneConfig, Series, SolarForecastCoordinator
 from .device import device_info, entry_suffix
-from .sonnendach import ATTRIBUTION_SONNENDACH, typical_day_kwh
-
-from calendar import monthrange
+from .sonnendach import ATTRIBUTION_SONNENDACH
 
 # key: (device class, unit, state class, enabled by default, entity category)
 _META: dict[str, tuple[SensorDeviceClass | None, str | None, SensorStateClass | None, bool, EntityCategory | None]] = {
@@ -33,7 +33,7 @@ _META: dict[str, tuple[SensorDeviceClass | None, str | None, SensorStateClass | 
     "peak_power_today": (SensorDeviceClass.POWER, UnitOfPower.WATT, None, True, None),
     "peak_time_today": (SensorDeviceClass.TIMESTAMP, None, None, True, None),
     "peak_power_tomorrow": (SensorDeviceClass.POWER, UnitOfPower.WATT, None, False, None),
-    # from the Sonnendach cadastre, only for a plane chosen there
+    # from the Sonnendach cadastre, only for planes chosen there
     "typical_day_energy": (SensorDeviceClass.ENERGY, UnitOfEnergy.KILO_WATT_HOUR, None, True, None),
     "forecast_vs_typical": (None, "%", SensorStateClass.MEASUREMENT, True, None),
     "run": (SensorDeviceClass.TIMESTAMP, None, None, False, EntityCategory.DIAGNOSTIC),
@@ -41,26 +41,20 @@ _META: dict[str, tuple[SensorDeviceClass | None, str | None, SensorStateClass | 
     "bytes_today": (SensorDeviceClass.DATA_SIZE, "B", SensorStateClass.TOTAL, False, EntityCategory.DIAGNOSTIC),
 }
 _ROOF_KEYS = ("typical_day_energy", "forecast_vs_typical")
+_DIAGNOSTIC_KEYS = ("run", "requests_today", "bytes_today")
+# per plane: the figures worth a sensor of their own (the rest is in the plant's attributes)
+_PLANE_KEYS = ("energy_today", "energy_tomorrow", "power_now", "peak_power_today", "typical_day_energy", "forecast_vs_typical")
+_PLANE_ENABLED = ("energy_today", "power_now")
 _TICK = timedelta(minutes=5)  # the time-dependent values (now, remaining) move between runs
-
-
-def typical_day_wh(entry: SolarForecastConfigEntry, day) -> float | None:
-    """The cadastre's long-term expectation for a day of this month."""
-    monthly = entry.data.get(CONF_ROOF_MONTHLY) or {}
-    plane = plane_from_entry(entry)
-    try:
-        shares = {int(k): float(v) for k, v in monthly.items()}
-        irradiation = float(entry.data.get(CONF_ROOF_IRRADIATION) or 0)
-    except (TypeError, ValueError):
-        return None
-    kwh = typical_day_kwh(plane.kwp, irradiation, shares, day.month, monthrange(day.year, day.month)[1], plane.losses, plane.damping)
-    return None if kwh is None else kwh * 1000.0
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: SolarForecastConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
     coordinator = entry.runtime_data
-    has_roof = bool(entry.data.get(CONF_ROOF_MONTHLY))
-    entities = [SolarForecastSensor(coordinator, entry, key) for key in _META if has_roof or key not in _ROOF_KEYS]
+    any_roof = any(p.has_roof for p in coordinator.planes)
+    entities: list[SensorEntity] = [PlantSensor(coordinator, entry, key) for key in _META if any_roof or key not in _ROOF_KEYS]
+    if len(coordinator.planes) > 1:
+        for plane in coordinator.planes:
+            entities += [PlaneSensor(coordinator, entry, key, plane) for key in _PLANE_KEYS if plane.has_roof or key not in _ROOF_KEYS]
     async_add_entities(entities)
 
     @callback
@@ -72,17 +66,53 @@ async def async_setup_entry(hass: HomeAssistant, entry: SolarForecastConfigEntry
     entry.async_on_unload(async_track_time_interval(hass, _tick, _TICK))
 
 
-class SolarForecastSensor(CoordinatorEntity[SolarForecastCoordinator], SensorEntity):
+def _kwh(wh: float | None) -> float | None:
+    return None if wh is None else round(wh / 1000.0, 3)
+
+
+def _value(key: str, series: Series, typical_wh, day0, day1, day2, now: datetime) -> Any:
+    """The figure of a key for a series (the plant's or a plane's)."""
+    if key == "energy_today":
+        return _kwh(series.day_energy_wh(day0))
+    if key == "energy_tomorrow":
+        return _kwh(series.day_energy_wh(day1))
+    if key == "energy_day_after_tomorrow":
+        return _kwh(series.day_energy_wh(day2))
+    if key == "energy_remaining_today":
+        return _kwh(series.remaining_today_wh(now))
+    if key == "power_now":
+        hour = series.hour_at(now)
+        return round(hour.power_kw * 1000) if hour else None
+    if key == "power_next_hour":
+        hour = series.hour_at(now + timedelta(hours=1))
+        return round(hour.power_kw * 1000) if hour else None
+    if key == "peak_power_today":
+        peak = series.peak(day0)
+        return round(peak.power_kw * 1000) if peak else None
+    if key == "peak_power_tomorrow":
+        peak = series.peak(day1)
+        return round(peak.power_kw * 1000) if peak else None
+    if key == "peak_time_today":
+        peak = series.peak(day0)
+        return peak.start + timedelta(minutes=30) if peak and peak.power_kw > 0 else None
+    if key == "typical_day_energy":
+        return _kwh(typical_wh(day0))
+    if key == "forecast_vs_typical":
+        typical = typical_wh(day0)
+        today = series.day_energy_wh(day0)
+        return round(today / typical * 100) if typical and today is not None else None
+    return None
+
+
+class _Base(CoordinatorEntity[SolarForecastCoordinator], SensorEntity):
     _attr_has_entity_name = True
     _attr_attribution = ATTRIBUTION
 
-    def __init__(self, coordinator: SolarForecastCoordinator, entry: SolarForecastConfigEntry, key: str) -> None:
+    def __init__(self, coordinator: SolarForecastCoordinator, entry: SolarForecastConfigEntry, key: str, suffix: str = "") -> None:
         super().__init__(coordinator)
         self._key = key
         self._entry = entry
         device_class, unit, state_class, enabled, category = _META[key]
-        if key in _ROOF_KEYS:
-            self._attr_attribution = ATTRIBUTION_SONNENDACH
         if device_class is not None:
             self._attr_device_class = device_class
         if unit is not None:
@@ -91,95 +121,95 @@ class SolarForecastSensor(CoordinatorEntity[SolarForecastCoordinator], SensorEnt
             self._attr_state_class = state_class
         if category is not None:
             self._attr_entity_category = category
+        if key in _ROOF_KEYS:
+            self._attr_attribution = ATTRIBUTION_SONNENDACH
         self._attr_entity_registry_enabled_default = enabled
         self._attr_translation_key = key
-        self._attr_unique_id = f"{entry.entry_id}_{key}"
-        # the id suggested on first creation: keeps two planes apart, stays stable on renames
-        self.entity_id = f"sensor.{DOMAIN}_{entry_suffix(entry)}_{key}"
+        self._attr_unique_id = f"{entry.entry_id}_{suffix}{key}"
+        # the id suggested on first creation: keeps two plants apart, stays stable on renames
+        self.entity_id = f"sensor.{DOMAIN}_{entry_suffix(entry)}_{suffix}{key}"
         self._attr_device_info = device_info(entry)
-        if key in ("energy_today", "energy_tomorrow", "energy_day_after_tomorrow"):
+        if key in ("energy_today", "energy_tomorrow", "energy_day_after_tomorrow", "energy_remaining_today", "typical_day_energy"):
             self._attr_suggested_display_precision = 2
-        elif key in ("power_now", "power_next_hour", "peak_power_today", "peak_power_tomorrow"):
+        elif unit == UnitOfPower.WATT:
             self._attr_suggested_display_precision = 0
 
     @property
     def available(self) -> bool:
-        return super().available and self.coordinator.data is not None and bool(self.coordinator.data.hours)
+        return super().available and self.coordinator.data is not None and bool(self.coordinator.data.plant.hours)
 
-    def _day(self, offset: int):
-        return (dt_util.now() + timedelta(days=offset)).date()
+    def _days(self):
+        today = dt_util.now().date()
+        return today, today + timedelta(days=1), today + timedelta(days=2)
+
+
+class PlantSensor(_Base):
+    """The plant: the planes' sum."""
 
     @property
     def native_value(self) -> Any:
         snap: ForecastSnapshot = self.coordinator.data
-        now = dt_util.utcnow()
-        key = self._key
-        if key == "energy_today":
-            return _kwh(snap.day_energy_wh(self._day(0)))
-        if key == "energy_tomorrow":
-            return _kwh(snap.day_energy_wh(self._day(1)))
-        if key == "energy_day_after_tomorrow":
-            return _kwh(snap.day_energy_wh(self._day(2)))
-        if key == "energy_remaining_today":
-            return _kwh(snap.remaining_today_wh(now))
-        if key == "power_now":
-            hour = snap.hour_at(now)
-            return round(hour.power_kw * 1000) if hour else None
-        if key == "power_next_hour":
-            hour = snap.hour_at(now + timedelta(hours=1))
-            return round(hour.power_kw * 1000) if hour else None
-        if key == "peak_power_today":
-            peak = snap.peak(self._day(0))
-            return round(peak.power_kw * 1000) if peak else None
-        if key == "peak_power_tomorrow":
-            peak = snap.peak(self._day(1))
-            return round(peak.power_kw * 1000) if peak else None
-        if key == "peak_time_today":
-            peak = snap.peak(self._day(0))
-            return peak.start + timedelta(minutes=30) if peak and peak.power_kw > 0 else None
-        if key == "typical_day_energy":
-            return _kwh(typical_day_wh(self._entry, self._day(0)))
-        if key == "forecast_vs_typical":
-            typical = typical_day_wh(self._entry, self._day(0))
-            today = snap.day_energy_wh(self._day(0))
-            return round(today / typical * 100) if typical and today is not None else None
-        if key == "run":
+        if self._key == "run":
             return snap.run
-        if key == "requests_today":
+        if self._key == "requests_today":
             return snap.requests_today
-        if key == "bytes_today":
+        if self._key == "bytes_today":
             return snap.bytes_today
-        return None
+        day0, day1, day2 = self._days()
+        return _value(self._key, snap.plant, self.coordinator.typical_day_wh, day0, day1, day2, dt_util.utcnow())
 
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
         snap: ForecastSnapshot = self.coordinator.data
         if self._key == "energy_today":
+            day0 = self._days()[0]
             return {
-                "hourly": {h.start.isoformat(): round(h.power_kw * 1000) for h in snap.hours},
-                "daily": _daily(snap),
+                "hourly": {h.start.isoformat(): round(h.power_kw * 1000) for h in snap.plant.hours},
+                "daily": snap.plant.daily_kwh(),
+                "planes": {p.label: _kwh(series.day_energy_wh(day0)) for p, series in zip(self.coordinator.planes, snap.planes)},
+                "kwp": round(self.coordinator.total_kwp, 2),
                 "diffuse_from_forecast": snap.diffuse_forecast,
             }
         if self._key == "run":
             return {"fetched": snap.fetched.isoformat() if snap.fetched else None, "missing": snap.missing}
         if self._key == "typical_day_energy":
-            today = self._day(0)
+            day0, day1, _day2 = self._days()
+            typical = self.coordinator.typical_day_wh(day0)
             return {
-                "typical_tomorrow": _kwh(typical_day_wh(self._entry, self._day(1))),
-                "typical_month_total": _kwh((typical_day_wh(self._entry, today) or 0) * monthrange(today.year, today.month)[1]),
-                "roof_area_m2": self._entry.data.get("roof_area"),
-                "roof_suitability_class": self._entry.data.get("roof_class"),
+                "typical_tomorrow": _kwh(self.coordinator.typical_day_wh(day1)),
+                "typical_month_total": _kwh((typical or 0) * monthrange(day0.year, day0.month)[1]) if typical else None,
+                "planes": {p.label: _kwh(p.typical_day_wh(day0)) for p in self.coordinator.planes if p.has_roof},
             }
         return None
 
 
-def _kwh(wh: float | None) -> float | None:
-    return None if wh is None else round(wh / 1000.0, 3)
+class PlaneSensor(_Base):
+    """One plane of a plant with several."""
 
+    def __init__(self, coordinator: SolarForecastCoordinator, entry: SolarForecastConfigEntry, key: str, plane: PlaneConfig) -> None:
+        super().__init__(coordinator, entry, key, suffix=f"plane{plane.index + 1}_")
+        self._plane = plane
+        self._attr_translation_key = f"plane_{key}"
+        self._attr_translation_placeholders = {"plane": plane.label}
+        self._attr_entity_registry_enabled_default = key in _PLANE_ENABLED
 
-def _daily(snap: ForecastSnapshot) -> dict[str, float]:
-    out: dict[str, float] = {}
-    for h in snap.hours:
-        day = dt_util.as_local(h.start).date().isoformat()
-        out[day] = out.get(day, 0.0) + h.energy_wh
-    return {day: round(wh / 1000.0, 2) for day, wh in out.items()}
+    @property
+    def native_value(self) -> Any:
+        snap: ForecastSnapshot = self.coordinator.data
+        if self._plane.index >= len(snap.planes):
+            return None
+        day0, day1, day2 = self._days()
+        return _value(self._key, snap.planes[self._plane.index], self._plane.typical_day_wh, day0, day1, day2, dt_util.utcnow())
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        raw = self._plane.raw
+        if self._key == "energy_today":
+            return {
+                "kwp": self._plane.plane.kwp,
+                "azimuth": self._plane.plane.azimuth,
+                "tilt": self._plane.plane.tilt,
+                "roof_area_m2": raw.get("roof_area"),
+                "roof_suitability_class": raw.get("roof_class"),
+            }
+        return None

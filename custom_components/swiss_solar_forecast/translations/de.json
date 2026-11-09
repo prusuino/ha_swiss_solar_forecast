@@ -3,9 +3,9 @@
     "step": {
       "user": {
         "title": "Swiss Solar Forecast",
-        "description": "Wo steht die Anlage? Der Standort von Home Assistant ist vorausgefüllt: Marker aufs Dach schieben oder eine Strassenadresse eingeben (das amtliche Adressregister kennt jede Adresse der Schweiz). Der nächste Schritt listet die Dachflächen dieses Gebäudes aus dem Sonnendach-Kataster des Bundesamts für Energie mit Ausrichtung, Neigung, Fläche und Eignung; du wählst deine oder erfasst eine Fläche von Hand. Ein Eintrag ist eine Dachfläche: für ein Dach in eine andere Richtung einen zweiten Eintrag anlegen.",
+        "description": "Wo steht die Anlage? Der Standort von Home Assistant ist vorausgefüllt: Marker aufs Dach schieben oder eine Strassenadresse eingeben (das amtliche Adressregister kennt jede Adresse der Schweiz). Der nächste Schritt listet die Dachflächen dieses Gebäudes aus dem Sonnendach-Kataster des Bundesamts für Energie; du kreuzt alle Flächen mit Modulen an und gibst danach die Werte Fläche für Fläche ein. Ein Eintrag ist die ganze Anlage.",
         "data": {
-          "name": "Name der Anlage oder Dachfläche",
+          "name": "Name der Anlage",
           "location": "Standort (Marker auf dem Dach)",
           "search": "Strassenadresse (optional; ersetzt den Marker)"
         }
@@ -15,15 +15,16 @@
         "description": "Mehrere Adressen passen. Wähle deine.",
         "data": { "search": "Adresse" }
       },
-      "roof": {
-        "title": "Dachfläche",
-        "description": "{count} Dachfläche(n) bei {place} im Sonnendach-Kataster, die grösste zuerst: Ausrichtung, Neigung, Fläche, Eignungsklasse (1 gering … 5 top) und der langjährige Stromertrag der ganzen Fläche. Wähle deine; der letzte Eintrag (—) erfasst eine Fläche von Hand, für ein Dach, das der Kataster nicht kennt, oder eine Freiflächenanlage.",
-        "data": { "roof": "Dachfläche" }
+      "roofs": {
+        "title": "Dachflächen",
+        "description": "{count} Dachfläche(n) bei {place} im Sonnendach-Kataster, die grösste zuerst: Ausrichtung, Neigung, Fläche, Eignungsklasse (1 gering … 5 top) und der langjährige Stromertrag der ganzen Fläche. Kreuze jede Fläche mit Modulen an. Der letzte Eintrag (✎) fügt eine Fläche hinzu, die du von Hand erfasst, für ein Dach, das der Kataster nicht kennt, eine Garage auf einem anderen Gebäude oder eine Freiflächenanlage; zusammen mit den anderen ankreuzen, wenn du beides brauchst.",
+        "data": { "roofs": "Flächen mit Modulen" }
       },
       "plane": {
-        "title": "Die Werte der Fläche",
-        "description": "Dach: {roof}. Ausrichtung und Neigung kommen aus dem Kataster; korrigiere sie, wenn du es besser weisst. Trag die installierte Spitzenleistung dieser Fläche in kWp ein (die Katasterfläche fasst mit modernen Modulen etwa {kwp_hint} kWp). Verluste umfassen Verkabelung, Wechselrichter, Verschmutzung und Mismatch (14 % ist ein üblicher Wert). Die Wechselrichter-Grenze kappt die AC-Leistung (0 = keine). Der Dämpfungsfaktor skaliert das Ergebnis, zum Abgleich mit dem echten Ertrag.",
+        "title": "Fläche {index} von {total}",
+        "description": "Dach: {roof}. Ausrichtung und Neigung kommen aus dem Kataster; korrigiere sie, wenn du es besser weisst. Trag die installierte Spitzenleistung dieser Fläche in kWp ein (die Katasterfläche fasst mit modernen Modulen etwa {kwp_hint} kWp). Verluste umfassen Verkabelung, Wechselrichter, Verschmutzung und Mismatch (14 % ist ein üblicher Wert). Die Wechselrichter-Grenze kappt die AC-Leistung dieser Fläche (0 = keine). Der Dämpfungsfaktor skaliert das Ergebnis, zum Abgleich mit dem echten Ertrag.",
         "data": {
+          "label": "Name der Fläche",
           "kwp": "Spitzenleistung der Fläche (kWp)",
           "azimuth": "Azimut (0 Nord, 90 Ost, 180 Süd, 270 West)",
           "tilt": "Neigung zur Horizontalen (0 flach, 90 senkrecht)",
@@ -33,8 +34,8 @@
         }
       },
       "reconfigure": {
-        "title": "Anlage verschieben",
-        "description": "Marker verschieben oder eine andere Adresse eingeben; die Dachflächen dort werden als Nächstes gelistet, dann die Werte. Der Eintrag behält seine Entitäten, IDs und den Verlauf.",
+        "title": "Anlage verschieben oder Flächen ändern",
+        "description": "Marker verschieben oder eine andere Adresse eingeben; die Dachflächen dort werden als Nächstes gelistet (die bisherigen Flächen der Anlage sind vorangekreuzt), dann die Werte jeder Fläche mit den aktuellen Werten vorausgefüllt. Der Eintrag behält seine Entitäten, IDs und den Verlauf.",
         "data": {
           "location": "Standort (Marker auf dem Dach)",
           "search": "Strassenadresse (optional; ersetzt den Marker)"
@@ -45,15 +46,16 @@
         "description": "Mehrere Adressen passen. Wähle deine.",
         "data": { "search": "Adresse" }
       },
-      "reconfigure_roof": {
-        "title": "Dachfläche",
-        "description": "{count} Dachfläche(n) bei {place} im Sonnendach-Kataster, die grösste zuerst. Wähle deine, oder den letzten Eintrag (—), um die Fläche von Hand zu erfassen.",
-        "data": { "roof": "Dachfläche" }
+      "reconfigure_roofs": {
+        "title": "Dachflächen",
+        "description": "{count} Dachfläche(n) bei {place} im Sonnendach-Kataster, die grösste zuerst. Kreuze jede Fläche mit Modulen an; der letzte Eintrag (✎) fügt eine von Hand erfasste Fläche hinzu.",
+        "data": { "roofs": "Flächen mit Modulen" }
       },
       "reconfigure_plane": {
-        "title": "Die Werte der Fläche",
-        "description": "Dach: {roof}. Ausrichtung und Neigung kommen aus dem Kataster; die übrigen Werte sind die aktuellen des Eintrags.",
+        "title": "Fläche {index} von {total}",
+        "description": "Dach: {roof}. Die Werte sind die aktuellen der Fläche, wo die Anlage dieses Dach schon hatte, sonst der Vorschlag aus dem Kataster.",
         "data": {
+          "label": "Name der Fläche",
           "kwp": "Spitzenleistung der Fläche (kWp)",
           "azimuth": "Azimut (0 Nord, 90 Ost, 180 Süd, 270 West)",
           "tilt": "Neigung zur Horizontalen (0 flach, 90 senkrecht)",
@@ -65,20 +67,27 @@
     },
     "error": {
       "cannot_connect": "Der Geodienst des Bundes war nicht erreichbar. Internetverbindung prüfen und erneut versuchen.",
-      "no_match": "Keine Adresse passt zum Text. Strasse und Ort versuchen, oder stattdessen den Marker verschieben."
+      "no_match": "Keine Adresse passt zum Text. Strasse und Ort versuchen, oder stattdessen den Marker verschieben.",
+      "pick_one": "Mindestens eine Fläche ankreuzen, oder den Stift für eine von Hand erfasste Fläche."
     },
     "abort": {
-      "already_configured": "Diese Dachfläche ist schon eingerichtet.",
+      "already_configured": "An diesem Ort ist schon eine Anlage eingerichtet. Ihre Flächen änderst du über Neu konfigurieren.",
       "cannot_connect": "Die Open Data von MeteoSchweiz konnten nicht gelesen werden. Internetverbindung prüfen und erneut versuchen.",
-      "reconfigure_successful": "Die Anlage wurde verschoben."
+      "reconfigure_successful": "Die Anlage wurde aktualisiert."
     }
   },
   "options": {
     "step": {
       "init": {
-        "title": "Die Werte der Fläche",
-        "description": "Spitzenleistung, Ausrichtung, Neigung, Verluste, Wechselrichter-Grenze und Dämpfung dieser Fläche. Eine Änderung lädt den Eintrag neu; IDs und Verlauf bleiben. Dämpfung zum Abgleich: liegt die Prognose über ein paar sonnige Wochen 10 % zu hoch, 0.9 setzen. Um die Anlage zu verschieben oder ein anderes Dach zu wählen, Neu konfigurieren im Menü des Eintrags nutzen.",
+        "title": "Welche Fläche?",
+        "description": "Die Flächen der Anlage. Wähle die, deren Werte du ändern willst. Um Flächen hinzuzufügen oder zu entfernen oder die Anlage zu verschieben, Neu konfigurieren im Menü des Eintrags nutzen.",
+        "data": { "plane": "Fläche" }
+      },
+      "plane": {
+        "title": "Fläche {plane}",
+        "description": "Spitzenleistung, Ausrichtung, Neigung, Verluste, Wechselrichter-Grenze und Dämpfung dieser Fläche. Eine Änderung lädt den Eintrag neu; IDs und Verlauf bleiben. Dämpfung zum Abgleich: liegt die Prognose über ein paar sonnige Wochen 10 % zu hoch, 0.9 setzen.",
         "data": {
+          "label": "Name der Fläche",
           "kwp": "Spitzenleistung der Fläche (kWp)",
           "azimuth": "Azimut (0 Nord, 90 Ost, 180 Süd, 270 West)",
           "tilt": "Neigung zur Horizontalen (0 flach, 90 senkrecht)",
@@ -87,6 +96,9 @@
           "damping": "Dämpfungsfaktor (1 = wie berechnet)"
         }
       }
+    },
+    "abort": {
+      "no_planes": "Diese Anlage hat keine Flächen; richte sie neu ein."
     }
   },
   "entity": {
@@ -104,7 +116,13 @@
       "forecast_vs_typical": { "name": "Prognose zu normalem Tag" },
       "run": { "name": "Prognoselauf" },
       "requests_today": { "name": "Abfragen heute" },
-      "bytes_today": { "name": "Gelesene Daten heute" }
+      "bytes_today": { "name": "Gelesene Daten heute" },
+      "plane_energy_today": { "name": "{plane} Ertrag heute" },
+      "plane_energy_tomorrow": { "name": "{plane} Ertrag morgen" },
+      "plane_power_now": { "name": "{plane} Leistung jetzt" },
+      "plane_peak_power_today": { "name": "{plane} Spitzenleistung heute" },
+      "plane_typical_day_energy": { "name": "{plane} normaler Tag" },
+      "plane_forecast_vs_typical": { "name": "{plane} Prognose zu normalem Tag" }
     }
   },
   "issues": {

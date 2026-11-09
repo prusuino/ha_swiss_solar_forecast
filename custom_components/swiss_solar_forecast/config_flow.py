@@ -1,8 +1,9 @@
-"""Config flow: the place (map marker or address), the roof plane from the
-Sonnendach cadastre or entered by hand, the plane's figures to confirm or
-correct, and the MeteoSwiss forecast point nearest to the roof (chosen
-automatically). Configure changes the plane's figures; Reconfigure moves
-the plant to another place or roof."""
+"""Config flow: the place (map marker or address), the roof planes from the
+Sonnendach cadastre (tick all that carry modules) or planes entered by
+hand, then the figures of every plane one after the other. One entry is
+one plant with all its planes; the MeteoSwiss forecast point nearest to
+the place is chosen automatically. Configure changes a plane's figures;
+Reconfigure moves the plant or changes its planes."""
 from __future__ import annotations
 
 import logging
@@ -21,6 +22,8 @@ from .const import (
     CONF_INVERTER_KW,
     CONF_KWP,
     CONF_LOSSES,
+    CONF_PLANE_LABEL,
+    CONF_PLANES,
     CONF_PLANT_NAME,
     CONF_POINT_HEIGHT,
     CONF_POINT_ID,
@@ -40,14 +43,15 @@ from .const import (
     DEFAULT_TILT,
     DOMAIN,
 )
-from .ogd import OgdError, Point, async_fetch_points, nearest
+from .ogd import OgdError, async_fetch_points, nearest
 from .sonnendach import Address, Roof, SonnendachError, async_geocode, async_roofs_at
 
 _LOGGER = logging.getLogger(__name__)
 
 CONF_LOCATION = "location"
 CONF_SEARCH = "search"
-CONF_ROOF = "roof"
+CONF_ROOFS = "roofs"
+CONF_PLANE = "plane"
 MANUAL = "manual"
 PLANE_KEYS = (CONF_KWP, CONF_AZIMUTH, CONF_TILT, CONF_LOSSES, CONF_INVERTER_KW, CONF_DAMPING)
 ROOF_KEYS = (CONF_ROOF_ID, CONF_ROOF_AREA, CONF_ROOF_CLASS, CONF_ROOF_IRRADIATION, CONF_ROOF_MONTHLY)
@@ -60,35 +64,45 @@ def compass_name(azimuth: float) -> str:
 
 
 def roof_label(roof: Roof, lang: str) -> str:
-    """'SE 130°, 23°, 85 m², class 4 (good), 14 500 kWh/a'."""
+    """'SE 130°, 23°, 85 m², 4 (good), 14 500 kWh/a'."""
     text = roof.suitability_text.get(lang) or roof.suitability_text.get("en") or ""
     cls = f"{roof.suitability} ({text})" if text else str(roof.suitability)
     return f"{compass_name(roof.azimuth)} {roof.azimuth:.0f}°, {roof.tilt:.0f}°, {roof.area:.0f} m², {cls}, {roof.yield_kwh_year:,.0f} kWh/a".replace(",", " ")
 
 
-def plane_schema(current: dict[str, Any] | None = None) -> dict[Any, Any]:
+def plane_label(azimuth: float, tilt: float) -> str:
+    return f"{compass_name(azimuth)} {azimuth:.0f}° / {tilt:.0f}°"
+
+
+def plane_schema(current: dict[str, Any] | None = None, with_label: bool = True) -> dict[Any, Any]:
     """The plane fields, with the current (or suggested) values as defaults."""
     cur = current or {}
-    return {
-        vol.Required(CONF_KWP, default=cur.get(CONF_KWP, 5.0)): selector.NumberSelector(
-            selector.NumberSelectorConfig(min=0.1, max=1000, step=0.01, unit_of_measurement="kWp", mode=selector.NumberSelectorMode.BOX)
-        ),
-        vol.Required(CONF_AZIMUTH, default=cur.get(CONF_AZIMUTH, DEFAULT_AZIMUTH)): selector.NumberSelector(
-            selector.NumberSelectorConfig(min=0, max=360, step=1, unit_of_measurement="°", mode=selector.NumberSelectorMode.BOX)
-        ),
-        vol.Required(CONF_TILT, default=cur.get(CONF_TILT, DEFAULT_TILT)): selector.NumberSelector(
-            selector.NumberSelectorConfig(min=0, max=90, step=1, unit_of_measurement="°", mode=selector.NumberSelectorMode.BOX)
-        ),
-        vol.Required(CONF_LOSSES, default=cur.get(CONF_LOSSES, DEFAULT_LOSSES)): selector.NumberSelector(
-            selector.NumberSelectorConfig(min=0, max=50, step=0.5, unit_of_measurement="%", mode=selector.NumberSelectorMode.BOX)
-        ),
-        vol.Required(CONF_INVERTER_KW, default=cur.get(CONF_INVERTER_KW, 0.0)): selector.NumberSelector(
-            selector.NumberSelectorConfig(min=0, max=1000, step=0.01, unit_of_measurement="kW", mode=selector.NumberSelectorMode.BOX)
-        ),
-        vol.Required(CONF_DAMPING, default=cur.get(CONF_DAMPING, DEFAULT_DAMPING)): selector.NumberSelector(
-            selector.NumberSelectorConfig(min=0.2, max=2.0, step=0.01, mode=selector.NumberSelectorMode.BOX)
-        ),
-    }
+    fields: dict[Any, Any] = {}
+    if with_label:
+        fields[vol.Required(CONF_PLANE_LABEL, default=cur.get(CONF_PLANE_LABEL, ""))] = selector.TextSelector()
+    fields.update(
+        {
+            vol.Required(CONF_KWP, default=cur.get(CONF_KWP, 5.0)): selector.NumberSelector(
+                selector.NumberSelectorConfig(min=0.1, max=1000, step=0.01, unit_of_measurement="kWp", mode=selector.NumberSelectorMode.BOX)
+            ),
+            vol.Required(CONF_AZIMUTH, default=cur.get(CONF_AZIMUTH, DEFAULT_AZIMUTH)): selector.NumberSelector(
+                selector.NumberSelectorConfig(min=0, max=360, step=1, unit_of_measurement="°", mode=selector.NumberSelectorMode.BOX)
+            ),
+            vol.Required(CONF_TILT, default=cur.get(CONF_TILT, DEFAULT_TILT)): selector.NumberSelector(
+                selector.NumberSelectorConfig(min=0, max=90, step=1, unit_of_measurement="°", mode=selector.NumberSelectorMode.BOX)
+            ),
+            vol.Required(CONF_LOSSES, default=cur.get(CONF_LOSSES, DEFAULT_LOSSES)): selector.NumberSelector(
+                selector.NumberSelectorConfig(min=0, max=50, step=0.5, unit_of_measurement="%", mode=selector.NumberSelectorMode.BOX)
+            ),
+            vol.Required(CONF_INVERTER_KW, default=cur.get(CONF_INVERTER_KW, 0.0)): selector.NumberSelector(
+                selector.NumberSelectorConfig(min=0, max=1000, step=0.01, unit_of_measurement="kW", mode=selector.NumberSelectorMode.BOX)
+            ),
+            vol.Required(CONF_DAMPING, default=cur.get(CONF_DAMPING, DEFAULT_DAMPING)): selector.NumberSelector(
+                selector.NumberSelectorConfig(min=0.2, max=2.0, step=0.01, mode=selector.NumberSelectorMode.BOX)
+            ),
+        }
+    )
+    return fields
 
 
 def _plane_values(user_input: dict[str, Any]) -> dict[str, float]:
@@ -116,9 +130,9 @@ class SwissSolarForecastConfigFlow(ConfigFlow, domain=DOMAIN):
         self._address: str = ""
         self._addresses: list[Address] = []
         self._roofs: list[Roof] = []
-        self._roof: Roof | None = None
+        self._queue: list[Roof | None] = []  # the planes still to be entered; None = by hand
+        self._planes: list[dict[str, Any]] = []
         self._name: str = "Solar"
-        self._plane: dict[str, float] = {}
         self._entry: ConfigEntry | None = None
 
     @staticmethod
@@ -147,6 +161,7 @@ class SwissSolarForecastConfigFlow(ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
         loc = user_input[CONF_LOCATION]
         self._lat, self._lon = float(loc["latitude"]), float(loc["longitude"])
+        self._address = ""
         search = str(user_input.get(CONF_SEARCH) or "").strip()
         session = async_get_clientsession(self.hass)
         if search:
@@ -172,15 +187,14 @@ class SwissSolarForecastConfigFlow(ConfigFlow, domain=DOMAIN):
         try:
             self._roofs = await async_roofs_at(async_get_clientsession(self.hass), self._lat, self._lon)
         except SonnendachError as err:
-            _LOGGER.debug("Roof lookup failed, manual plane: %s", err)
+            _LOGGER.debug("Roof lookup failed, manual planes: %s", err)
             self._roofs = []
-        return await getattr(self, f"async_step_{prefix}roof")()
+        return await getattr(self, f"async_step_{prefix}roofs")()
 
     async def _async_address_form(self, step_id: str, user_input: dict[str, Any] | None, prefix: str) -> ConfigFlowResult:
         if user_input is not None:
             chosen = user_input[CONF_SEARCH]
-            address = next(a for a in self._addresses if a.label == chosen)
-            self._use_address(address)
+            self._use_address(next(a for a in self._addresses if a.label == chosen))
             return await self._async_load_roofs(prefix)
         options = [selector.SelectOptionDict(value=a.label, label=a.label) for a in self._addresses]
         schema = vol.Schema(
@@ -192,54 +206,85 @@ class SwissSolarForecastConfigFlow(ConfigFlow, domain=DOMAIN):
         )
         return self.async_show_form(step_id=step_id, data_schema=schema)
 
-    async def _async_roof_form(self, step_id: str, user_input: dict[str, Any] | None, prefix: str) -> ConfigFlowResult:
+    def _current_planes(self) -> list[dict[str, Any]]:
+        if self._entry is None:
+            return []
+        return list(self._entry.options.get(CONF_PLANES) or self._entry.data.get(CONF_PLANES) or [])
+
+    async def _async_roofs_form(self, step_id: str, user_input: dict[str, Any] | None, prefix: str) -> ConfigFlowResult:
+        """Tick every plane that carries modules; 'by hand' adds a plane
+        the cadastre does not know."""
+        errors: dict[str, str] = {}
         if user_input is not None:
-            chosen = user_input[CONF_ROOF]
-            self._roof = None if chosen == MANUAL else next(r for r in self._roofs if str(r.roof_id) == chosen)
-            return await getattr(self, f"async_step_{prefix}plane")()
+            chosen = list(user_input.get(CONF_ROOFS) or [])
+            if not chosen:
+                errors[CONF_ROOFS] = "pick_one"
+            else:
+                self._queue = [next(r for r in self._roofs if str(r.roof_id) == c) if c != MANUAL else None for c in chosen]
+                self._planes = []
+                return await getattr(self, f"async_step_{prefix}plane")()
         options = [selector.SelectOptionDict(value=str(r.roof_id), label=roof_label(r, self._lang)) for r in self._roofs]
-        options.append(selector.SelectOptionDict(value=MANUAL, label="—"))
-        default = options[0]["value"]
-        if self._entry is not None and any(o["value"] == str(self._entry.data.get(CONF_ROOF_ID)) for o in options):
-            default = str(self._entry.data.get(CONF_ROOF_ID))
+        options.append(selector.SelectOptionDict(value=MANUAL, label="✎"))
+        current_ids = {str(p.get(CONF_ROOF_ID)) for p in self._current_planes() if p.get(CONF_ROOF_ID) is not None}
+        default = [o["value"] for o in options if o["value"] in current_ids] or ([options[0]["value"]] if self._roofs else [MANUAL])
         schema = vol.Schema(
             {
-                vol.Required(CONF_ROOF, default=default): selector.SelectSelector(
-                    selector.SelectSelectorConfig(options=options, mode=selector.SelectSelectorMode.LIST)
+                vol.Required(CONF_ROOFS, default=default): selector.SelectSelector(
+                    selector.SelectSelectorConfig(options=options, mode=selector.SelectSelectorMode.LIST, multiple=True)
                 )
             }
         )
         return self.async_show_form(
-            step_id=step_id, data_schema=schema, description_placeholders={"count": str(len(self._roofs)), "place": self._address or f"{self._lat:.4f}, {self._lon:.4f}"}
+            step_id=step_id,
+            data_schema=schema,
+            errors=errors,
+            description_placeholders={"count": str(len(self._roofs)), "place": self._address or f"{self._lat:.4f}, {self._lon:.4f}"},
         )
 
-    def _plane_defaults(self) -> dict[str, Any]:
-        """Suggested figures: the chosen roof's, else the entry's current
-        ones (reconfigure), else the defaults."""
+    def _plane_defaults(self, roof: Roof | None) -> dict[str, Any]:
+        """Suggested figures: the plane's current ones when the entry already
+        has this roof (reconfigure), else the roof's, else the defaults."""
         cur: dict[str, Any] = {}
-        if self._entry is not None:
-            cur = {key: self._entry.options.get(key, self._entry.data.get(key)) for key in PLANE_KEYS}
-            cur = {k: v for k, v in cur.items() if v is not None}
-        if self._roof is not None:
-            cur[CONF_AZIMUTH] = round(self._roof.azimuth)
-            cur[CONF_TILT] = round(self._roof.tilt)
-            if CONF_KWP not in cur:
-                cur[CONF_KWP] = self._roof.suggested_kwp
+        existing = None
+        for p in self._current_planes():
+            if roof is not None and p.get(CONF_ROOF_ID) == roof.roof_id:
+                existing = p
+                break
+        if existing is None and roof is None:
+            manual = [p for p in self._current_planes() if p.get(CONF_ROOF_ID) is None]
+            done_manual = sum(1 for p in self._planes if p.get(CONF_ROOF_ID) is None)
+            if done_manual < len(manual):
+                existing = manual[done_manual]
+        if existing:
+            cur = {k: existing[k] for k in (CONF_PLANE_LABEL, *PLANE_KEYS) if k in existing}
+        if roof is not None:
+            cur.setdefault(CONF_AZIMUTH, round(roof.azimuth))
+            cur.setdefault(CONF_TILT, round(roof.tilt))
+            cur.setdefault(CONF_KWP, roof.suggested_kwp)
+            cur.setdefault(CONF_PLANE_LABEL, plane_label(roof.azimuth, roof.tilt))
+        else:
+            cur.setdefault(CONF_PLANE_LABEL, f"Plane {len(self._planes) + 1}")
         return cur
 
     async def _async_plane_form(self, step_id: str, user_input: dict[str, Any] | None) -> ConfigFlowResult:
+        roof = self._queue[len(self._planes)] if len(self._planes) < len(self._queue) else None
         if user_input is not None:
-            self._plane = _plane_values(user_input)
+            values = _plane_values(user_input)
+            label = str(user_input.get(CONF_PLANE_LABEL) or "").strip() or plane_label(values[CONF_AZIMUTH], values[CONF_TILT])
+            self._planes.append({CONF_PLANE_LABEL: label, **values, **_roof_values(roof)})
+            if len(self._planes) < len(self._queue):
+                return await getattr(self, f"async_step_{step_id}")()
             return await self._async_finish()
-        roof = self._roof
         placeholders = {
+            "index": str(len(self._planes) + 1),
+            "total": str(len(self._queue)),
             "roof": roof_label(roof, self._lang) if roof else "—",
-            "kwp_hint": f"{roof.suggested_kwp:g}" if roof else "",
+            "kwp_hint": f"{roof.suggested_kwp:g}" if roof else "–",
         }
-        return self.async_show_form(step_id=step_id, data_schema=vol.Schema(plane_schema(self._plane_defaults())), description_placeholders=placeholders)
+        return self.async_show_form(step_id=step_id, data_schema=vol.Schema(plane_schema(self._plane_defaults(roof))), description_placeholders=placeholders)
 
     async def _async_finish(self) -> ConfigFlowResult:
-        """The forecast point nearest to the roof, then the entry."""
+        """The forecast point nearest to the place, then the entry."""
         try:
             points = await async_fetch_points(async_get_clientsession(self.hass))
         except OgdError as err:
@@ -255,25 +300,22 @@ class SwissSolarForecastConfigFlow(ConfigFlow, domain=DOMAIN):
             CONF_POINT_HEIGHT: point.height,
             CONF_ADDRESS: self._address,
             CONF_PLANT_NAME: self._name,
-            **_roof_values(self._roof),
+            CONF_PLANES: self._planes,
         }
-        if self._roof is not None:
-            unique_id = f"roof-{self._roof.roof_id}"
-        else:
-            unique_id = f"{point.point_type}-{point.point_id}-{self._plane[CONF_AZIMUTH]:.0f}-{self._plane[CONF_TILT]:.0f}"
+        # one plant per place: the coordinates, to about ten metres
+        unique_id = f"{self._lat:.4f},{self._lon:.4f}"
         await self.async_set_unique_id(unique_id)
         if self._entry is None:
             self._abort_if_unique_id_configured()
-            return self.async_create_entry(title=self._name, data={**place, **self._plane})
+            return self.async_create_entry(title=self._name, data=place)
         if unique_id != self._entry.unique_id:
             self._abort_if_unique_id_configured()
-        data = {k: v for k, v in self._entry.data.items() if k not in ROOF_KEYS}
         # Update only: the entry's update listener reloads it on a change.
         self.hass.config_entries.async_update_entry(
             self._entry,
             unique_id=unique_id,
-            data={**data, **place, **self._plane},
-            options={k: v for k, v in self._entry.options.items() if k not in PLANE_KEYS},
+            data={**self._entry.data, **place},
+            options={k: v for k, v in self._entry.options.items() if k != CONF_PLANES},
         )
         return self.async_abort(reason="reconfigure_successful")
 
@@ -292,8 +334,8 @@ class SwissSolarForecastConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_address(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         return await self._async_address_form("address", user_input, "")
 
-    async def async_step_roof(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        return await self._async_roof_form("roof", user_input, "")
+    async def async_step_roofs(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        return await self._async_roofs_form("roofs", user_input, "")
 
     async def async_step_plane(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         return await self._async_plane_form("plane", user_input)
@@ -301,9 +343,9 @@ class SwissSolarForecastConfigFlow(ConfigFlow, domain=DOMAIN):
     # ------------------------------------------------------- reconfigure
 
     async def async_step_reconfigure(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        """Another place or roof: marker or address, the roofs there, the figures."""
+        """Another place, or other planes: marker or address, the roofs there, the figures of every plane."""
         self._entry = self._get_reconfigure_entry()
-        self._name = self._entry.title
+        self._name = self._entry.data.get(CONF_PLANT_NAME) or self._entry.title
         errors: dict[str, str] = {}
         if user_input is not None:
             result, errors = await self._async_place_submitted(user_input, "reconfigure_")
@@ -316,20 +358,48 @@ class SwissSolarForecastConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_reconfigure_address(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         return await self._async_address_form("reconfigure_address", user_input, "reconfigure_")
 
-    async def async_step_reconfigure_roof(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        return await self._async_roof_form("reconfigure_roof", user_input, "reconfigure_")
+    async def async_step_reconfigure_roofs(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        return await self._async_roofs_form("reconfigure_roofs", user_input, "reconfigure_")
 
     async def async_step_reconfigure_plane(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         return await self._async_plane_form("reconfigure_plane", user_input)
 
 
 class SwissSolarForecastOptionsFlow(OptionsFlow):
-    """The plane's figures: peak power, orientation, tilt, losses, inverter limit, damping."""
+    """A plane's figures: pick the plane (when there are several), then
+    peak power, orientation, tilt, losses, inverter limit and damping."""
+
+    def __init__(self) -> None:
+        self._index = 0
+
+    def _planes(self) -> list[dict[str, Any]]:
+        entry = self.config_entry
+        return [dict(p) for p in (entry.options.get(CONF_PLANES) or entry.data.get(CONF_PLANES) or [])]
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        entry = self.config_entry
+        planes = self._planes()
+        if len(planes) <= 1:
+            self._index = 0
+            return await self.async_step_plane()
         if user_input is not None:
-            return self.async_create_entry(title="", data={**entry.options, **_plane_values(user_input)})
-        current = {key: entry.options.get(key, entry.data.get(key)) for key in PLANE_KEYS}
-        current = {k: v for k, v in current.items() if v is not None}
-        return self.async_show_form(step_id="init", data_schema=vol.Schema(plane_schema(current)))
+            self._index = int(user_input[CONF_PLANE])
+            return await self.async_step_plane()
+        options = [selector.SelectOptionDict(value=str(i), label=f"{p.get(CONF_PLANE_LABEL) or i + 1} · {p.get(CONF_KWP, 0):g} kWp") for i, p in enumerate(planes)]
+        schema = vol.Schema(
+            {vol.Required(CONF_PLANE, default="0"): selector.SelectSelector(selector.SelectSelectorConfig(options=options, mode=selector.SelectSelectorMode.LIST))}
+        )
+        return self.async_show_form(step_id="init", data_schema=schema)
+
+    async def async_step_plane(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        planes = self._planes()
+        if not planes:
+            return self.async_abort(reason="no_planes")
+        current = planes[self._index]
+        if user_input is not None:
+            label = str(user_input.get(CONF_PLANE_LABEL) or "").strip() or current.get(CONF_PLANE_LABEL) or f"Plane {self._index + 1}"
+            planes[self._index] = {**current, CONF_PLANE_LABEL: label, **_plane_values(user_input)}
+            return self.async_create_entry(title="", data={**self.config_entry.options, CONF_PLANES: planes})
+        defaults = {k: current[k] for k in (CONF_PLANE_LABEL, *PLANE_KEYS) if k in current}
+        return self.async_show_form(
+            step_id="plane", data_schema=vol.Schema(plane_schema(defaults)), description_placeholders={"plane": str(current.get(CONF_PLANE_LABEL) or self._index + 1)}
+        )

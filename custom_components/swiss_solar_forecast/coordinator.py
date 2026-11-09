@@ -1,6 +1,7 @@
 """The data coordinator: reads the three radiation and temperature series
 of the entry's forecast point whenever MeteoSwiss publishes a new model
-run, and turns them into the hourly plane output.
+run, and turns them into the hourly output of every plane of the plant
+and of the plant as a whole.
 
 It wakes every 15 minutes, asks with one HEAD request whether a new run
 exists and reads the files only then (a few hundred kilobytes per run with
@@ -9,6 +10,7 @@ traffic stays visible."""
 from __future__ import annotations
 
 import logging
+from calendar import monthrange
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 
@@ -24,10 +26,14 @@ from .const import (
     CONF_INVERTER_KW,
     CONF_KWP,
     CONF_LOSSES,
+    CONF_PLANE_LABEL,
+    CONF_PLANES,
     CONF_POINT_ID,
     CONF_POINT_LAT,
     CONF_POINT_LON,
     CONF_POINT_TYPE,
+    CONF_ROOF_IRRADIATION,
+    CONF_ROOF_MONTHLY,
     CONF_TILT,
     DEFAULT_AZIMUTH,
     DEFAULT_DAMPING,
@@ -42,6 +48,7 @@ from .const import (
 from .issues import IssueReporter
 from .ogd import OgdError, OgdUnavailable, async_catalogue_latest_run, async_fetch_forecast, async_find_latest_run
 from .solar import HourForecast, Plane, forecast_hours
+from .sonnendach import typical_day_kwh
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -51,20 +58,76 @@ _FORECAST_MAX_AGE = timedelta(hours=12)
 
 
 @dataclass
-class ForecastSnapshot:
-    """What the entities read."""
+class PlaneConfig:
+    """One plane of the plant as configured, with its cadastre data if any."""
 
-    run: datetime | None = None
-    fetched: datetime | None = None
+    index: int
+    label: str
+    plane: Plane
+    roof_irradiation: float = 0.0  # kWh/m²/a on the plane, from the cadastre
+    roof_monthly: dict[int, float] = field(default_factory=dict)  # month -> percent of the year
+    raw: dict = field(default_factory=dict)
+
+    @property
+    def has_roof(self) -> bool:
+        return self.roof_irradiation > 0 and len(self.roof_monthly) == 12
+
+    def typical_day_wh(self, day: date) -> float | None:
+        kwh = typical_day_kwh(
+            self.plane.kwp, self.roof_irradiation, self.roof_monthly, day.month, monthrange(day.year, day.month)[1], self.plane.losses, self.plane.damping
+        )
+        return None if kwh is None else kwh * 1000.0
+
+
+def _f(value, default: float) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def plane_from_dict(raw: dict) -> Plane:
+    return Plane(
+        kwp=_f(raw.get(CONF_KWP), 0.0),
+        azimuth=_f(raw.get(CONF_AZIMUTH), DEFAULT_AZIMUTH),
+        tilt=_f(raw.get(CONF_TILT), DEFAULT_TILT),
+        losses=_f(raw.get(CONF_LOSSES), DEFAULT_LOSSES),
+        inverter_kw=_f(raw.get(CONF_INVERTER_KW), 0.0),
+        damping=_f(raw.get(CONF_DAMPING), DEFAULT_DAMPING),
+    )
+
+
+def planes_from_entry(entry: ConfigEntry) -> list[PlaneConfig]:
+    """The planes as configured: the options' list wins over the data's."""
+    raw_planes = entry.options.get(CONF_PLANES) or entry.data.get(CONF_PLANES) or []
+    out: list[PlaneConfig] = []
+    for index, raw in enumerate(raw_planes):
+        if not isinstance(raw, dict):
+            continue
+        monthly: dict[int, float] = {}
+        for k, v in (raw.get(CONF_ROOF_MONTHLY) or {}).items():
+            try:
+                monthly[int(k)] = float(v)
+            except (TypeError, ValueError):
+                continue
+        out.append(
+            PlaneConfig(
+                index=index,
+                label=str(raw.get(CONF_PLANE_LABEL) or f"Plane {index + 1}"),
+                plane=plane_from_dict(raw),
+                roof_irradiation=_f(raw.get(CONF_ROOF_IRRADIATION), 0.0),
+                roof_monthly=monthly,
+                raw=raw,
+            )
+        )
+    return out
+
+
+@dataclass
+class Series:
+    """The hourly output of one plane, or of the plant."""
+
     hours: list[HourForecast] = field(default_factory=list)
-    missing: list[str] = field(default_factory=list)
-    diffuse_forecast: bool = False  # whether the diffuse share came from MeteoSwiss or was estimated
-    # traffic since local midnight
-    traffic_day: datetime | None = None
-    requests_today: int = 0
-    bytes_today: int = 0
-    last_requests: int = 0
-    last_bytes: int = 0
 
     def day_energy_wh(self, day: date) -> float | None:
         values = [h.energy_wh for h in self.hours if dt_util.as_local(h.start).date() == day]
@@ -98,29 +161,57 @@ class ForecastSnapshot:
         hours = [h for h in self.hours if dt_util.as_local(h.start).date() == day]
         return max(hours, key=lambda h: h.power_kw) if hours else None
 
+    def daily_kwh(self) -> dict[str, float]:
+        out: dict[str, float] = {}
+        for h in self.hours:
+            day = dt_util.as_local(h.start).date().isoformat()
+            out[day] = out.get(day, 0.0) + h.energy_wh
+        return {day: round(wh / 1000.0, 2) for day, wh in out.items()}
 
-def plane_from_entry(entry: ConfigEntry) -> Plane:
-    """The plane as configured: options win over the data they started from."""
 
-    def get(key: str, default: float) -> float:
-        value = entry.options.get(key, entry.data.get(key, default))
-        try:
-            return float(value)
-        except (TypeError, ValueError):
-            return default
+@dataclass
+class ForecastSnapshot:
+    """What the entities read."""
 
-    return Plane(
-        kwp=get(CONF_KWP, 0.0),
-        azimuth=get(CONF_AZIMUTH, DEFAULT_AZIMUTH),
-        tilt=get(CONF_TILT, DEFAULT_TILT),
-        losses=get(CONF_LOSSES, DEFAULT_LOSSES),
-        inverter_kw=get(CONF_INVERTER_KW, 0.0),
-        damping=get(CONF_DAMPING, DEFAULT_DAMPING),
-    )
+    run: datetime | None = None
+    fetched: datetime | None = None
+    plant: Series = field(default_factory=Series)
+    planes: list[Series] = field(default_factory=list)
+    missing: list[str] = field(default_factory=list)
+    diffuse_forecast: bool = False  # whether the diffuse share came from MeteoSwiss or was estimated
+    # traffic since local midnight
+    traffic_day: datetime | None = None
+    requests_today: int = 0
+    bytes_today: int = 0
+    last_requests: int = 0
+    last_bytes: int = 0
+
+
+def _sum_hours(per_plane: list[list[HourForecast]]) -> list[HourForecast]:
+    """The plant's hours: the planes' values added per hour start."""
+    by_start: dict[datetime, list[HourForecast]] = {}
+    for hours in per_plane:
+        for h in hours:
+            by_start.setdefault(h.start, []).append(h)
+    out: list[HourForecast] = []
+    for start in sorted(by_start):
+        items = by_start[start]
+        first = items[0]
+        out.append(
+            HourForecast(
+                start=start,
+                ghi=first.ghi,
+                dhi=first.dhi,
+                temperature=first.temperature,
+                poa=sum(h.poa for h in items) / len(items),
+                power_kw=sum(h.power_kw for h in items),
+            )
+        )
+    return out
 
 
 class SolarForecastCoordinator(DataUpdateCoordinator[ForecastSnapshot]):
-    """The plane output forecast of one entry."""
+    """The output forecast of one plant (one or more planes)."""
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         super().__init__(hass, _LOGGER, name=f"{DOMAIN} forecast", update_interval=_CHECK_INTERVAL, config_entry=entry)
@@ -128,11 +219,21 @@ class SolarForecastCoordinator(DataUpdateCoordinator[ForecastSnapshot]):
         self.point = (int(entry.data[CONF_POINT_ID]), int(entry.data[CONF_POINT_TYPE]))
         self.lat = float(entry.data[CONF_POINT_LAT])
         self.lon = float(entry.data[CONF_POINT_LON])
-        self.plane = plane_from_entry(entry)
+        self.planes = planes_from_entry(entry)
         self._snapshot = ForecastSnapshot()
         self._series: dict[str, list[tuple[datetime, float | None]]] = {}
         self._warned_run: datetime | None = None
         self.issues = IssueReporter(hass, entry.entry_id)
+
+    @property
+    def total_kwp(self) -> float:
+        return sum(p.plane.kwp for p in self.planes)
+
+    def typical_day_wh(self, day: date) -> float | None:
+        """The plant's long-term expectation of a day: the planes' sum, for the planes with a cadastre roof."""
+        values = [p.typical_day_wh(day) for p in self.planes if p.has_roof]
+        values = [v for v in values if v is not None]
+        return sum(values) if values else None
 
     async def _async_update_data(self) -> ForecastSnapshot:
         try:
@@ -162,12 +263,14 @@ class SolarForecastCoordinator(DataUpdateCoordinator[ForecastSnapshot]):
         return now - run <= _FORECAST_MAX_AGE
 
     def _compute(self, snap: ForecastSnapshot) -> None:
-        """The plane output from the kept series (also after a plane change)."""
+        """Every plane's output from the kept series, and the plant's sum."""
         ghi = dict(self._series.get(PARAM_GLOBAL, []))
         dhi = dict(self._series.get(PARAM_DIFFUSE, []))
         temp = dict(self._series.get(PARAM_TEMPERATURE, []))
         rows = [(ts, value, dhi.get(ts), temp.get(ts)) for ts, value in sorted(ghi.items())]
-        snap.hours = forecast_hours(rows, self.lat, self.lon, self.plane)
+        per_plane = [forecast_hours(rows, self.lat, self.lon, p.plane) for p in self.planes]
+        snap.planes = [Series(hours) for hours in per_plane]
+        snap.plant = Series(_sum_hours(per_plane))
         snap.diffuse_forecast = bool(dhi)
 
     async def _async_fetch(self) -> ForecastSnapshot:
@@ -188,7 +291,7 @@ class SolarForecastCoordinator(DataUpdateCoordinator[ForecastSnapshot]):
             if self._usable(snap, now):
                 return snap
             raise UpdateFailed("MeteoSwiss has published no local forecast run for the last hours")
-        if run == snap.run and snap.hours:
+        if run == snap.run and snap.plant.hours:
             return snap
         try:
             data = await async_fetch_forecast(session, run, self.point, HOURLY_PARAMS)

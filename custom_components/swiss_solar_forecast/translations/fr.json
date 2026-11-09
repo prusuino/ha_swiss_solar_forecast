@@ -3,9 +3,9 @@
     "step": {
       "user": {
         "title": "Swiss Solar Forecast",
-        "description": "Où se trouve l'installation ? La position de Home Assistant est préremplie : déplacez le marqueur sur le toit ou saisissez une adresse (le registre fédéral des adresses connaît toutes les adresses de Suisse). L'étape suivante liste les pans de toit de ce bâtiment d'après le cadastre Toitsolaire de l'Office fédéral de l'énergie, avec orientation, inclinaison, surface et aptitude ; vous choisissez le vôtre ou saisissez un pan à la main. Une entrée correspond à un pan : créez une seconde entrée pour un toit orienté autrement.",
+        "description": "Où se trouve l'installation ? La position de Home Assistant est préremplie : déplacez le marqueur sur le toit ou saisissez une adresse (le registre fédéral des adresses connaît toutes les adresses de Suisse). L'étape suivante liste les pans de toit de ce bâtiment d'après le cadastre Toitsolaire de l'Office fédéral de l'énergie ; vous cochez tous les pans qui portent des modules, puis saisissez les valeurs pan par pan. Une entrée correspond à toute l'installation.",
         "data": {
-          "name": "Nom de l'installation ou du pan",
+          "name": "Nom de l'installation",
           "location": "Position (marqueur sur le toit)",
           "search": "Adresse (facultatif ; remplace le marqueur)"
         }
@@ -15,15 +15,16 @@
         "description": "Plusieurs adresses correspondent. Choisissez la vôtre.",
         "data": { "search": "Adresse" }
       },
-      "roof": {
-        "title": "Pan de toit",
-        "description": "{count} pan(s) de toit à {place} dans le cadastre Toitsolaire, le plus grand en premier : orientation, inclinaison, surface, classe d'aptitude (1 faible … 5 excellente) et rendement électrique à long terme du pan entier. Choisissez le vôtre ; la dernière entrée (—) permet de saisir un pan à la main, pour un toit inconnu du cadastre ou une installation au sol.",
-        "data": { "roof": "Pan de toit" }
+      "roofs": {
+        "title": "Pans de toit",
+        "description": "{count} pan(s) de toit à {place} dans le cadastre Toitsolaire, le plus grand en premier : orientation, inclinaison, surface, classe d'aptitude (1 faible … 5 excellente) et rendement électrique à long terme du pan entier. Cochez chaque pan qui porte des modules. La dernière entrée (✎) ajoute un pan saisi à la main, pour un toit inconnu du cadastre, un garage sur un autre bâtiment ou une installation au sol ; cochez-la avec les autres s'il vous faut les deux.",
+        "data": { "roofs": "Pans avec modules" }
       },
       "plane": {
-        "title": "Les valeurs du pan",
-        "description": "Toit : {roof}. L'orientation et l'inclinaison viennent du cadastre ; corrigez-les si vous savez mieux. Saisissez la puissance crête installée de ce pan en kWc (la surface du cadastre accueillerait environ {kwp_hint} kWc de modules modernes). Les pertes couvrent le câblage, l'onduleur, la salissure et le mismatch (14 % est une valeur courante). La limite de l'onduleur écrête la puissance AC (0 = aucune). Le facteur d'amortissement met le résultat à l'échelle, pour le calage sur le rendement réel.",
+        "title": "Pan {index} sur {total}",
+        "description": "Toit : {roof}. L'orientation et l'inclinaison viennent du cadastre ; corrigez-les si vous savez mieux. Saisissez la puissance crête installée de ce pan en kWc (la surface du cadastre accueillerait environ {kwp_hint} kWc de modules modernes). Les pertes couvrent le câblage, l'onduleur, la salissure et le mismatch (14 % est une valeur courante). La limite de l'onduleur écrête la puissance AC de ce pan (0 = aucune). Le facteur d'amortissement met le résultat à l'échelle, pour le calage sur le rendement réel.",
         "data": {
+          "label": "Nom du pan",
           "kwp": "Puissance crête du pan (kWc)",
           "azimuth": "Azimut (0 nord, 90 est, 180 sud, 270 ouest)",
           "tilt": "Inclinaison par rapport à l'horizontale (0 plat, 90 vertical)",
@@ -33,8 +34,8 @@
         }
       },
       "reconfigure": {
-        "title": "Déplacer l'installation",
-        "description": "Déplacez le marqueur ou saisissez une autre adresse ; les pans de toit y sont listés ensuite, puis les valeurs. L'entrée garde ses entités, leurs identifiants et l'historique.",
+        "title": "Déplacer l'installation ou changer ses pans",
+        "description": "Déplacez le marqueur ou saisissez une autre adresse ; les pans de toit y sont listés ensuite (les pans actuels sont précochés), puis les valeurs de chaque pan, préremplies avec les valeurs actuelles. L'entrée garde ses entités, leurs identifiants et l'historique.",
         "data": {
           "location": "Position (marqueur sur le toit)",
           "search": "Adresse (facultatif ; remplace le marqueur)"
@@ -45,15 +46,16 @@
         "description": "Plusieurs adresses correspondent. Choisissez la vôtre.",
         "data": { "search": "Adresse" }
       },
-      "reconfigure_roof": {
-        "title": "Pan de toit",
-        "description": "{count} pan(s) de toit à {place} dans le cadastre Toitsolaire, le plus grand en premier. Choisissez le vôtre, ou la dernière entrée (—) pour saisir le pan à la main.",
-        "data": { "roof": "Pan de toit" }
+      "reconfigure_roofs": {
+        "title": "Pans de toit",
+        "description": "{count} pan(s) de toit à {place} dans le cadastre Toitsolaire, le plus grand en premier. Cochez chaque pan qui porte des modules ; la dernière entrée (✎) ajoute un pan saisi à la main.",
+        "data": { "roofs": "Pans avec modules" }
       },
       "reconfigure_plane": {
-        "title": "Les valeurs du pan",
-        "description": "Toit : {roof}. L'orientation et l'inclinaison viennent du cadastre ; les autres valeurs sont celles de l'entrée.",
+        "title": "Pan {index} sur {total}",
+        "description": "Toit : {roof}. Les valeurs sont celles du pan actuel lorsque l'installation avait déjà ce toit, sinon la suggestion du cadastre.",
         "data": {
+          "label": "Nom du pan",
           "kwp": "Puissance crête du pan (kWc)",
           "azimuth": "Azimut (0 nord, 90 est, 180 sud, 270 ouest)",
           "tilt": "Inclinaison par rapport à l'horizontale (0 plat, 90 vertical)",
@@ -65,20 +67,27 @@
     },
     "error": {
       "cannot_connect": "Le service géographique fédéral n'a pas répondu. Vérifiez la connexion internet et réessayez.",
-      "no_match": "Aucune adresse ne correspond au texte. Essayez rue et localité, ou déplacez plutôt le marqueur."
+      "no_match": "Aucune adresse ne correspond au texte. Essayez rue et localité, ou déplacez plutôt le marqueur.",
+      "pick_one": "Cochez au moins un pan, ou le crayon pour un pan saisi à la main."
     },
     "abort": {
-      "already_configured": "Ce pan de toit est déjà configuré.",
+      "already_configured": "Une installation est déjà configurée à cet endroit. Modifiez ses pans par Reconfigurer.",
       "cannot_connect": "Les données ouvertes de MétéoSuisse n'ont pas pu être lues. Vérifiez la connexion internet et réessayez.",
-      "reconfigure_successful": "L'installation a été déplacée."
+      "reconfigure_successful": "L'installation a été mise à jour."
     }
   },
   "options": {
     "step": {
       "init": {
-        "title": "Les valeurs du pan",
-        "description": "Puissance crête, orientation, inclinaison, pertes, limite de l'onduleur et amortissement de ce pan. Une modification recharge l'entrée ; identifiants et historique sont conservés. Amortissement pour le calage : si la prévision est 10 % trop haute sur quelques semaines ensoleillées, mettez 0.9. Pour déplacer l'installation ou choisir un autre toit, utilisez Reconfigurer dans le menu de l'entrée.",
+        "title": "Quel pan ?",
+        "description": "Les pans de l'installation. Choisissez celui dont vous voulez changer les valeurs. Pour ajouter ou retirer des pans, ou déplacer l'installation, utilisez Reconfigurer dans le menu de l'entrée.",
+        "data": { "plane": "Pan" }
+      },
+      "plane": {
+        "title": "Pan {plane}",
+        "description": "Puissance crête, orientation, inclinaison, pertes, limite de l'onduleur et amortissement de ce pan. Une modification recharge l'entrée ; identifiants et historique sont conservés. Amortissement pour le calage : si la prévision est 10 % trop haute sur quelques semaines ensoleillées, mettez 0.9.",
         "data": {
+          "label": "Nom du pan",
           "kwp": "Puissance crête du pan (kWc)",
           "azimuth": "Azimut (0 nord, 90 est, 180 sud, 270 ouest)",
           "tilt": "Inclinaison par rapport à l'horizontale (0 plat, 90 vertical)",
@@ -87,6 +96,9 @@
           "damping": "Facteur d'amortissement (1 = tel que calculé)"
         }
       }
+    },
+    "abort": {
+      "no_planes": "Cette installation n'a aucun pan ; configurez-la à nouveau."
     }
   },
   "entity": {
@@ -104,7 +116,13 @@
       "forecast_vs_typical": { "name": "Prévision vs journée type" },
       "run": { "name": "Run de prévision" },
       "requests_today": { "name": "Requêtes aujourd'hui" },
-      "bytes_today": { "name": "Données lues aujourd'hui" }
+      "bytes_today": { "name": "Données lues aujourd'hui" },
+      "plane_energy_today": { "name": "{plane} énergie aujourd'hui" },
+      "plane_energy_tomorrow": { "name": "{plane} énergie demain" },
+      "plane_power_now": { "name": "{plane} puissance actuelle" },
+      "plane_peak_power_today": { "name": "{plane} puissance maximale aujourd'hui" },
+      "plane_typical_day_energy": { "name": "{plane} journée type" },
+      "plane_forecast_vs_typical": { "name": "{plane} prévision vs journée type" }
     }
   },
   "issues": {

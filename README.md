@@ -12,11 +12,11 @@ A Home Assistant custom integration that forecasts the output of your PV plant f
 
 ## Highlights
 
-- **Your roof from the solar cadastre**: type your address or drop the marker on the roof, and the planes of that building appear from *Sonnendach*, the Swiss solar cadastre of the Federal Office of Energy — orientation, tilt, area, suitability class and long-term yield. Pick yours, correct what you know better, done. No guessing of azimuths; and a plane the cadastre does not know is entered by hand.
+- **Your roof from the solar cadastre**: type your address or drop the marker on the roof, and the planes of that building appear from *Sonnendach*, the Swiss solar cadastre of the Federal Office of Energy — orientation, tilt, area, suitability class and long-term yield. Tick every plane that carries modules, correct what you know better, done. No guessing of azimuths; a plane the cadastre does not know is entered by hand.
 - **The MeteoSwiss forecast, on your roof**: global *and* diffuse radiation from the official model, projected on your module plane (azimuth, tilt), with the cell temperature from the forecast air temperature, your system losses and the inverter limit. No guessed cloud factors.
 - **Energy dashboard**: the forecast appears as *solar production forecast* in the energy dashboard, like Solcast or Forecast.Solar — without an account or a daily request limit.
 - **Sensors that automations can use**: energy today, tomorrow, the day after and the rest of today; power now and next hour; today's peak and when it comes. Hourly values for nine days as attributes.
-- **Several roofs**: one entry per module plane; add a second entry for the other orientation. Sum them with a helper if you want one figure.
+- **Several roofs, one plant**: all planes in one entry, with the plant's totals and a sensor per plane; the energy dashboard gets the sum.
 - **A yardstick**: with a cadastre roof, a sensor shows the long-term expectation of a day in this month and the forecast as a percentage of it — "today 60 % of a normal November day".
 - **Calibration**: a damping factor scales the result once you have compared a few weeks with your real yield.
 - **Reads sparingly**: one HEAD request every 15 minutes tells whether a new model run exists; only then are three parameter files read, about 300 KB per run, 7 MB a day. A diagnostics sensor shows the traffic.
@@ -30,7 +30,7 @@ The forecast files are large (one file per parameter and run, all 5800 points of
 
 ## What it provides
 
-One device per entry (one module plane), with these sensors:
+One device per plant, with these sensors for the plant (the planes' sum):
 
 | Entity | Description |
 |---|---|
@@ -40,7 +40,9 @@ One device per entry (one module plane), with these sensors:
 | `…_power_now`, `…_power_next_hour` | The forecast AC power of the current and the next hour, W. |
 | `…_peak_power_today`, `…_peak_time_today` | Today's highest hourly power and the middle of that hour. |
 | `…_peak_power_tomorrow` | Tomorrow's peak (disabled by default). |
-| `…_typical_day_energy`, `…_forecast_vs_typical` | Only for a plane chosen from the cadastre: the long-term expectation of a day of this month (attributes: tomorrow, the whole month, roof area and class) and today's forecast as a percentage of it. |
+| `…_typical_day_energy`, `…_forecast_vs_typical` | Only with planes chosen from the cadastre: the long-term expectation of a day of this month (attributes: tomorrow, the whole month, the figure per plane) and today's forecast as a percentage of it. |
+
+A plant with several planes also gets, per plane, `…_plane<n>_energy_today`, `…_plane<n>_power_now` (enabled) and `…_plane<n>_energy_tomorrow`, `…_plane<n>_peak_power_today`, `…_plane<n>_typical_day_energy`, `…_plane<n>_forecast_vs_typical` (disabled by default). The plant's `energy_today` carries the planes' figures as an attribute as well.
 | `…_run`, `…_requests_today`, `…_bytes_today` | Diagnostics: the model run in use, and the requests and bytes read since midnight (disabled by default). |
 
 The energy values refresh with every model run (hourly) and the time-dependent ones every five minutes.
@@ -87,21 +89,19 @@ The sensors are plain numbers and timestamps, so the automation editor can use t
 
 **Settings → Devices & services → Add integration → Swiss Solar Forecast.**
 
-1. **Place.** A name for the plane, then your Home Assistant location pre-filled on the map: move the marker onto your roof, or type a street address (every address of Switzerland is known; a building without a street address is found by the marker).
-2. **Roof plane.** The planes of that building from the Sonnendach cadastre, largest first, with orientation, tilt, area, suitability class (1 low … 5 top) and the long-term yield. Pick yours. The last entry (—) is for a plane the cadastre does not know, a wrong outline or a ground-mounted plant: you then enter orientation and tilt yourself.
-3. **Figures.** Orientation and tilt from the cadastre (correct them if you know better), the installed peak power in kWp (the form tells how much the cadastre's area would hold), the system losses (14 % is a usual figure for wiring, inverter, soiling and mismatch), the inverter's AC limit (0 for none) and the damping factor (1 to start with). The MeteoSwiss forecast point nearest to the roof is chosen automatically.
+1. **Place.** A name for the plant, then your Home Assistant location pre-filled on the map: move the marker onto your roof, or type a street address (every address of Switzerland is known; a building without a street address is found by the marker).
+2. **Roof planes.** The planes of that building from the Sonnendach cadastre, largest first, with orientation, tilt, area, suitability class (1 low … 5 top) and the long-term yield. Tick every plane that carries modules. The pencil entry adds a plane the cadastre does not know (a garage on another building, a wrong outline, a ground-mounted plant): you then enter orientation and tilt yourself. Tick it together with the others if you need both.
+3. **Figures, plane by plane.** For each ticked plane a form with a name, orientation and tilt from the cadastre (correct them if you know better), the installed peak power in kWp (the form tells how much the cadastre's area would hold), the system losses (14 % is a usual figure for wiring, inverter, soiling and mismatch), the inverter's AC limit (0 for none) and the damping factor (1 to start with). The MeteoSwiss forecast point nearest to the place is chosen automatically.
 
-**Configure** (the entry's ⚙️) changes the figures; **Reconfigure** (the entry's ⋮ menu) moves the plant to another place or roof. Both keep the entities, their ids and history.
-
-For a second roof, add another entry and pick the other plane. The same cadastre roof twice is refused as a duplicate.
+**Configure** (the entry's ⚙️) changes one plane's figures; **Reconfigure** (the entry's ⋮ menu) moves the plant or changes its planes, with the current figures pre-filled. Both keep the entities, their ids and history. A second plant at another place is a second entry.
 
 ### Calibration
 
-Compare `…_energy_today` with your inverter's daily energy over a couple of weeks with mixed weather. If the forecast runs 10 % high, set the damping factor to 0.9; if your plant is partly shaded in the morning, a lower factor is the simple remedy, a separate entry for the shaded part the exact one.
+Compare `…_energy_today` with your inverter's daily energy over a couple of weeks with mixed weather. If the forecast runs 10 % high, set the damping factor to 0.9; if one plane is partly shaded in the morning, a lower factor on that plane is the remedy.
 
 ## Removal
 
-1. **Settings → Devices & services → Swiss Solar Forecast**, open the entry's menu (⋮) and choose **Delete**. Repeat for every plane. The entities, their history and the device go with the entry.
+1. **Settings → Devices & services → Swiss Solar Forecast**, open the entry's menu (⋮) and choose **Delete**. Repeat for every plant. The entities, their history and the device go with the entry.
 2. Remove the integration itself in the **Marketplace** (or HACS), then restart Home Assistant. With a manual installation, delete `custom_components/swiss_solar_forecast` instead.
 3. If the forecast was selected in the energy dashboard, pick another forecast there or none.
 

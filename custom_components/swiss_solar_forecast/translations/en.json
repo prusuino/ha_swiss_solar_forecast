@@ -3,9 +3,9 @@
     "step": {
       "user": {
         "title": "Swiss Solar Forecast",
-        "description": "Where is the plant? Your Home Assistant location is pre-filled: move the marker onto the roof, or type a street address (the federal address register knows every address of Switzerland). The next step lists the roof planes of that building from the Sonnendach cadastre of the Federal Office of Energy, with orientation, tilt, area and suitability; you pick yours or enter a plane by hand. One entry is one plane: set up a second entry for a roof facing another way.",
+        "description": "Where is the plant? Your Home Assistant location is pre-filled: move the marker onto the roof, or type a street address (the federal address register knows every address of Switzerland). The next step lists the roof planes of that building from the Sonnendach cadastre of the Federal Office of Energy; you tick every plane that carries modules, then enter the figures of each plane one after the other. One entry is the whole plant.",
         "data": {
-          "name": "Name of the plant or plane",
+          "name": "Name of the plant",
           "location": "Location (marker on the roof)",
           "search": "Street address (optional; replaces the marker)"
         }
@@ -15,15 +15,16 @@
         "description": "Several addresses match. Pick yours.",
         "data": { "search": "Address" }
       },
-      "roof": {
-        "title": "Roof plane",
-        "description": "{count} roof plane(s) at {place} in the Sonnendach cadastre, largest first: orientation, tilt, area, suitability class (1 low … 5 top) and the long-term electricity yield of the whole plane. Pick yours; the last entry (—) lets you enter a plane by hand, for a roof the cadastre does not know or a ground-mounted plant.",
-        "data": { "roof": "Roof plane" }
+      "roofs": {
+        "title": "Roof planes",
+        "description": "{count} roof plane(s) at {place} in the Sonnendach cadastre, largest first: orientation, tilt, area, suitability class (1 low … 5 top) and the long-term electricity yield of the whole plane. Tick every plane that carries modules. The last entry (✎) adds a plane you enter by hand, for a roof the cadastre does not know, a garage on another building or a ground-mounted plant; tick it together with the others if you need both.",
+        "data": { "roofs": "Planes with modules" }
       },
       "plane": {
-        "title": "The plane's figures",
-        "description": "Roof: {roof}. Orientation and tilt come from the cadastre; correct them if you know better. Enter the installed peak power of this plane in kWp (the cadastre's area would hold about {kwp_hint} kWp with modern modules). Losses cover wiring, inverter, soiling and mismatch (14 % is a usual figure). The inverter limit clips the AC power (0 = none). Damping scales the result, for calibration against your real yield.",
+        "title": "Plane {index} of {total}",
+        "description": "Roof: {roof}. Orientation and tilt come from the cadastre; correct them if you know better. Enter the installed peak power of this plane in kWp (the cadastre's area would hold about {kwp_hint} kWp with modern modules). Losses cover wiring, inverter, soiling and mismatch (14 % is a usual figure). The inverter limit clips this plane's AC power (0 = none). Damping scales the result, for calibration against your real yield.",
         "data": {
+          "label": "Name of the plane",
           "kwp": "Peak power of the plane (kWp)",
           "azimuth": "Azimuth (0 north, 90 east, 180 south, 270 west)",
           "tilt": "Tilt from horizontal (0 flat, 90 vertical)",
@@ -33,8 +34,8 @@
         }
       },
       "reconfigure": {
-        "title": "Move the plant",
-        "description": "Move the marker or type another address; the roof planes there are listed next, then the figures. The entry keeps its entities, their ids and history.",
+        "title": "Move the plant or change its planes",
+        "description": "Move the marker or type another address; the roof planes there are listed next (the plant's current planes are pre-ticked), then the figures of every plane with the current values pre-filled. The entry keeps its entities, their ids and history.",
         "data": {
           "location": "Location (marker on the roof)",
           "search": "Street address (optional; replaces the marker)"
@@ -45,15 +46,16 @@
         "description": "Several addresses match. Pick yours.",
         "data": { "search": "Address" }
       },
-      "reconfigure_roof": {
-        "title": "Roof plane",
-        "description": "{count} roof plane(s) at {place} in the Sonnendach cadastre, largest first. Pick yours, or the last entry (—) to enter the plane by hand.",
-        "data": { "roof": "Roof plane" }
+      "reconfigure_roofs": {
+        "title": "Roof planes",
+        "description": "{count} roof plane(s) at {place} in the Sonnendach cadastre, largest first. Tick every plane that carries modules; the last entry (✎) adds a plane entered by hand.",
+        "data": { "roofs": "Planes with modules" }
       },
       "reconfigure_plane": {
-        "title": "The plane's figures",
-        "description": "Roof: {roof}. Orientation and tilt come from the cadastre; the other figures are the entry's current ones.",
+        "title": "Plane {index} of {total}",
+        "description": "Roof: {roof}. The figures are the plane's current ones where the plant already had this roof, else the cadastre's suggestion.",
         "data": {
+          "label": "Name of the plane",
           "kwp": "Peak power of the plane (kWp)",
           "azimuth": "Azimuth (0 north, 90 east, 180 south, 270 west)",
           "tilt": "Tilt from horizontal (0 flat, 90 vertical)",
@@ -65,20 +67,27 @@
     },
     "error": {
       "cannot_connect": "The federal geo service could not be reached. Check the internet connection and try again.",
-      "no_match": "No address matches the text. Try street and place, or move the marker instead."
+      "no_match": "No address matches the text. Try street and place, or move the marker instead.",
+      "pick_one": "Tick at least one plane, or the pencil for a plane entered by hand."
     },
     "abort": {
-      "already_configured": "This roof plane is already set up.",
+      "already_configured": "A plant at this place is already set up. Use its Reconfigure to change the planes.",
       "cannot_connect": "The MeteoSwiss open data could not be read. Check the internet connection and try again.",
-      "reconfigure_successful": "The plant has been moved."
+      "reconfigure_successful": "The plant has been updated."
     }
   },
   "options": {
     "step": {
       "init": {
-        "title": "The plane's figures",
-        "description": "Peak power, orientation, tilt, losses, inverter limit and damping of this plane. Changing a value reloads the entry; entity ids and history are kept. Use damping to calibrate: if the forecast is 10 % too high over a few sunny weeks, set 0.9. To move the plant or pick another roof, use Reconfigure in the entry's menu.",
+        "title": "Which plane?",
+        "description": "The plant's planes. Pick the one whose figures you want to change. To add or remove planes, or move the plant, use Reconfigure in the entry's menu.",
+        "data": { "plane": "Plane" }
+      },
+      "plane": {
+        "title": "Plane {plane}",
+        "description": "Peak power, orientation, tilt, losses, inverter limit and damping of this plane. Changing a value reloads the entry; entity ids and history are kept. Use damping to calibrate: if the forecast is 10 % too high over a few sunny weeks, set 0.9.",
         "data": {
+          "label": "Name of the plane",
           "kwp": "Peak power of the plane (kWp)",
           "azimuth": "Azimuth (0 north, 90 east, 180 south, 270 west)",
           "tilt": "Tilt from horizontal (0 flat, 90 vertical)",
@@ -87,6 +96,9 @@
           "damping": "Damping factor (1 = as computed)"
         }
       }
+    },
+    "abort": {
+      "no_planes": "This plant has no planes; set it up again."
     }
   },
   "entity": {
@@ -104,7 +116,13 @@
       "forecast_vs_typical": { "name": "Forecast vs typical day" },
       "run": { "name": "Forecast run" },
       "requests_today": { "name": "Requests today" },
-      "bytes_today": { "name": "Data read today" }
+      "bytes_today": { "name": "Data read today" },
+      "plane_energy_today": { "name": "{plane} energy today" },
+      "plane_energy_tomorrow": { "name": "{plane} energy tomorrow" },
+      "plane_power_now": { "name": "{plane} power now" },
+      "plane_peak_power_today": { "name": "{plane} peak power today" },
+      "plane_typical_day_energy": { "name": "{plane} typical day" },
+      "plane_forecast_vs_typical": { "name": "{plane} forecast vs typical day" }
     }
   },
   "issues": {
