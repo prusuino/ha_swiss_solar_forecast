@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.0 — unreleased
+## 0.2.0 — 2026-11-09
 
 - **Terrain horizon.** The horizon of the place is read once from the swisstopo elevation model (five requests to the federal geo API, about 2 MB, kept afterwards): 37 directions from north-east over south to north-west, 25 km far. While the sun stands behind a mountain or a valley side, the direct beam of that part of the hour is left out and only the diffuse light counts. Switched on by default, also for existing plants after the update; to switch it off use Configure → Σ. New diagnostics sensor *Terrain horizon* with the highest angle and the whole profile. Bare terrain only: no trees, no buildings.
 - **Self-calibration against your own meter.** Name the energy sensor of the plant under Configure → Σ, and every full hour the forecast is compared with what the meter counted. One factor per hour of the day is learned, with a fading memory of about two weeks, and applied to the coming days: shading by trees and buildings, soiling, lasting snow. New diagnostics sensor *Calibration factor* with the factor per hour, the number of learned hours and the energy of today without the calibration. Nothing changes without a meter.
