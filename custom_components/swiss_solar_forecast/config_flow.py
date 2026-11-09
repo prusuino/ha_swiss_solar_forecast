@@ -254,6 +254,7 @@ class SwissSolarForecastConfigFlow(ConfigFlow, domain=DOMAIN):
             CONF_POINT_LON: self._lon,
             CONF_POINT_HEIGHT: point.height,
             CONF_ADDRESS: self._address,
+            CONF_PLANT_NAME: self._name,
             **_roof_values(self._roof),
         }
         if self._roof is not None:

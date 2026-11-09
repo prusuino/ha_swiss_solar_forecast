@@ -62,6 +62,7 @@ async def test_setup_from_marker_with_cadastre_roof(hass: HomeAssistant, enable_
     assert result["data"][CONF_POINT_ID] == 800100  # nearest forecast point, picked automatically
     assert result["data"][CONF_POINT_NAME] == "Zürich"
     assert result["data"][CONF_ROOF_ID] == 5001
+    assert result["data"]["name"] == "Roof south-east"
     assert result["data"][CONF_ROOF_CLASS] == 4
     assert result["data"][CONF_ROOF_MONTHLY]["6"] == 13.0
     assert result["data"][CONF_AZIMUTH] == 135.0  # the user's correction wins

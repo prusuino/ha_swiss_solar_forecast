@@ -16,7 +16,7 @@ def entry_suffix(entry: ConfigEntry) -> str:
 
 
 def plant_name(entry: ConfigEntry) -> str:
-    return entry.data.get(CONF_PLANT_NAME) or entry.data.get(CONF_POINT_NAME) or "Solar"
+    return entry.data.get(CONF_PLANT_NAME) or entry.title or entry.data.get(CONF_POINT_NAME) or "Solar"
 
 
 def device_info(entry: ConfigEntry) -> DeviceInfo:
