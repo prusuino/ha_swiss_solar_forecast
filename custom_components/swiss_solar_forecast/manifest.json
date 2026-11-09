@@ -1,0 +1,16 @@
+{
+  "domain": "swiss_solar_forecast",
+  "name": "Swiss Solar Forecast (MeteoSwiss Open Data)",
+  "codeowners": [
+    "@prusuino"
+  ],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/prusuino/ha_swiss_solar_forecast",
+  "integration_type": "service",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/prusuino/ha_swiss_solar_forecast/issues",
+  "quality_scale": "bronze",
+  "requirements": [],
+  "version": "0.1.0"
+}

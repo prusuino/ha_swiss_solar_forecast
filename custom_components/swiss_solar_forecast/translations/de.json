@@ -1,0 +1,95 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Swiss Solar Forecast",
+        "description": "Wo steht die Anlage, und wie liegt die Modulfläche? Der Standort von Home Assistant ist vorausgefüllt; Marker verschieben oder Ort bzw. PLZ suchen. Ein Eintrag ist eine Modulfläche: für ein Dach in eine andere Richtung einen zweiten Eintrag anlegen. Azimut ist die Himmelsrichtung, in die die Module zeigen (0 Nord, 90 Ost, 180 Süd, 270 West); Neigung ist der Winkel zur Horizontalen. Verluste umfassen Verkabelung, Wechselrichter, Verschmutzung und Mismatch (14 % ist ein üblicher Wert). Die Wechselrichter-Grenze kappt die AC-Leistung (0 = keine). Der Dämpfungsfaktor skaliert das Ergebnis, zum Abgleich mit dem echten Ertrag.",
+        "data": {
+          "location": "Standort",
+          "search": "Ort oder PLZ (optional; die Suche ersetzt den Kartenstandort)",
+          "name": "Name der Anlage oder Modulfläche",
+          "kwp": "Spitzenleistung der Fläche (kWp)",
+          "azimuth": "Azimut (0 Nord, 90 Ost, 180 Süd, 270 West)",
+          "tilt": "Neigung zur Horizontalen (0 flach, 90 senkrecht)",
+          "losses": "Systemverluste",
+          "inverter_kw": "Wechselrichter-Grenze AC (0 = keine)",
+          "damping": "Dämpfungsfaktor (1 = wie berechnet)"
+        }
+      },
+      "search": {
+        "title": "Ort wählen",
+        "description": "Die Prognosepunkte, die zur Suche passen.",
+        "data": { "point": "Ort" }
+      },
+      "place": {
+        "title": "Prognosepunkt",
+        "description": "Die MeteoSchweiz-Prognosepunkte in der Nähe des Standorts, der nächste zuerst. Den Punkt wählen, der zum Ort passt; seine Strahlungsprognose speist die Modulfläche.",
+        "data": { "point": "Prognosepunkt" }
+      },
+      "reconfigure": {
+        "title": "Anlage verschieben",
+        "description": "Marker verschieben oder einen anderen Ort bzw. eine PLZ suchen; der Prognosepunkt wird im nächsten Schritt gewählt. Der Eintrag behält seine Entitäten, IDs und den Verlauf. Die Modulfläche selbst wird unter Konfigurieren geändert.",
+        "data": {
+          "location": "Standort",
+          "search": "Ort oder PLZ (optional; die Suche ersetzt den Kartenstandort)"
+        }
+      },
+      "reconfigure_search": {
+        "title": "Ort wählen",
+        "description": "Die Prognosepunkte, die zur Suche passen.",
+        "data": { "point": "Ort" }
+      },
+      "reconfigure_place": {
+        "title": "Prognosepunkt",
+        "description": "Die MeteoSchweiz-Prognosepunkte in der Nähe des Standorts, der nächste zuerst.",
+        "data": { "point": "Prognosepunkt" }
+      }
+    },
+    "error": {
+      "cannot_connect": "Die Open Data von MeteoSchweiz konnten nicht gelesen werden. Internetverbindung prüfen und erneut versuchen.",
+      "no_match": "Kein Ort und keine PLZ passt zur Suche."
+    },
+    "abort": {
+      "already_configured": "Eine Modulfläche mit dieser Ausrichtung und Neigung ist für diesen Prognosepunkt schon eingerichtet.",
+      "reconfigure_successful": "Die Anlage wurde verschoben."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Modulfläche",
+        "description": "Spitzenleistung, Ausrichtung, Neigung, Verluste, Wechselrichter-Grenze und Dämpfung dieser Fläche. Eine Änderung lädt den Eintrag neu; IDs und Verlauf bleiben. Dämpfung zum Abgleich: liegt die Prognose über ein paar sonnige Wochen 10 % zu hoch, 0.9 setzen.",
+        "data": {
+          "kwp": "Spitzenleistung der Fläche (kWp)",
+          "azimuth": "Azimut (0 Nord, 90 Ost, 180 Süd, 270 West)",
+          "tilt": "Neigung zur Horizontalen (0 flach, 90 senkrecht)",
+          "losses": "Systemverluste",
+          "inverter_kw": "Wechselrichter-Grenze AC (0 = keine)",
+          "damping": "Dämpfungsfaktor (1 = wie berechnet)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "energy_today": { "name": "Ertrag heute" },
+      "energy_tomorrow": { "name": "Ertrag morgen" },
+      "energy_remaining_today": { "name": "Ertrag Rest heute" },
+      "energy_day_after_tomorrow": { "name": "Ertrag übermorgen" },
+      "power_now": { "name": "Leistung jetzt" },
+      "power_next_hour": { "name": "Leistung nächste Stunde" },
+      "peak_power_today": { "name": "Spitzenleistung heute" },
+      "peak_time_today": { "name": "Spitzenzeit heute" },
+      "peak_power_tomorrow": { "name": "Spitzenleistung morgen" },
+      "run": { "name": "Prognoselauf" },
+      "requests_today": { "name": "Abfragen heute" },
+      "bytes_today": { "name": "Gelesene Daten heute" }
+    }
+  },
+  "issues": {
+    "forecast_unreachable": {
+      "title": "Swiss Solar Forecast: Prognose nicht lesbar",
+      "description": "Die Open Data von MeteoSchweiz konnten mehrmals in Folge nicht gelesen werden ({error}). Internetverbindung prüfen; ist sie in Ordnung, ist der MeteoSchweiz-Dienst gestört oder hat sich geändert. Die Sensoren bleiben bis dahin nicht verfügbar und erholen sich von selbst; dieser Hinweis verschwindet mit der nächsten erfolgreichen Aktualisierung."
+    }
+  }
+}

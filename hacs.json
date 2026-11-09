@@ -1,0 +1,7 @@
+{
+  "name": "Swiss Solar Forecast (MeteoSwiss Open Data)",
+  "zip_release": true,
+  "filename": "swiss_solar_forecast.zip",
+  "render_readme": true,
+  "homeassistant": "2025.4.0"
+}

@@ -1,0 +1,95 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Swiss Solar Forecast",
+        "description": "Where is the plant, and what does the module plane look like? Your Home Assistant location is pre-filled; move the marker or search for a place or postal code. One entry is one plane: set up a second entry for a roof facing another way. Azimuth is the compass bearing the modules face (0 north, 90 east, 180 south, 270 west); tilt is the inclination from horizontal. Losses cover wiring, inverter, soiling and mismatch (14 % is a usual figure). The inverter limit clips the AC power (0 = none). Damping scales the result, for calibration against your real yield.",
+        "data": {
+          "location": "Location",
+          "search": "Place or postal code (optional; searching replaces the map location)",
+          "name": "Name of the plant or plane",
+          "kwp": "Peak power of the plane (kWp)",
+          "azimuth": "Azimuth (0 north, 90 east, 180 south, 270 west)",
+          "tilt": "Tilt from horizontal (0 flat, 90 vertical)",
+          "losses": "System losses",
+          "inverter_kw": "Inverter AC limit (0 = none)",
+          "damping": "Damping factor (1 = as computed)"
+        }
+      },
+      "search": {
+        "title": "Choose the place",
+        "description": "The forecast points matching your search.",
+        "data": { "point": "Place" }
+      },
+      "place": {
+        "title": "Forecast point",
+        "description": "The MeteoSwiss forecast points nearest to the location, nearest first. Pick the one that matches your place; its radiation forecast feeds the plane.",
+        "data": { "point": "Forecast point" }
+      },
+      "reconfigure": {
+        "title": "Move the plant",
+        "description": "Move the marker or search for another place or postal code; the forecast point is then picked in the next step. The entry keeps its entities, their ids and history. The plane itself is changed in Configure.",
+        "data": {
+          "location": "Location",
+          "search": "Place or postal code (optional; searching replaces the map location)"
+        }
+      },
+      "reconfigure_search": {
+        "title": "Choose the place",
+        "description": "The forecast points matching your search.",
+        "data": { "point": "Place" }
+      },
+      "reconfigure_place": {
+        "title": "Forecast point",
+        "description": "The MeteoSwiss forecast points nearest to the location, nearest first.",
+        "data": { "point": "Forecast point" }
+      }
+    },
+    "error": {
+      "cannot_connect": "The MeteoSwiss open data could not be read. Check the internet connection and try again.",
+      "no_match": "No place or postal code matches the search."
+    },
+    "abort": {
+      "already_configured": "A plane with this orientation and tilt is already set up for this forecast point.",
+      "reconfigure_successful": "The plant has been moved."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Module plane",
+        "description": "Peak power, orientation, tilt, losses, inverter limit and damping of this plane. Changing a value reloads the entry; entity ids and history are kept. Use damping to calibrate: if the forecast is 10 % too high over a few sunny weeks, set 0.9.",
+        "data": {
+          "kwp": "Peak power of the plane (kWp)",
+          "azimuth": "Azimuth (0 north, 90 east, 180 south, 270 west)",
+          "tilt": "Tilt from horizontal (0 flat, 90 vertical)",
+          "losses": "System losses",
+          "inverter_kw": "Inverter AC limit (0 = none)",
+          "damping": "Damping factor (1 = as computed)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "energy_today": { "name": "Energy today" },
+      "energy_tomorrow": { "name": "Energy tomorrow" },
+      "energy_remaining_today": { "name": "Energy remaining today" },
+      "energy_day_after_tomorrow": { "name": "Energy day after tomorrow" },
+      "power_now": { "name": "Power now" },
+      "power_next_hour": { "name": "Power next hour" },
+      "peak_power_today": { "name": "Peak power today" },
+      "peak_time_today": { "name": "Peak time today" },
+      "peak_power_tomorrow": { "name": "Peak power tomorrow" },
+      "run": { "name": "Forecast run" },
+      "requests_today": { "name": "Requests today" },
+      "bytes_today": { "name": "Data read today" }
+    }
+  },
+  "issues": {
+    "forecast_unreachable": {
+      "title": "Swiss Solar Forecast: forecast not readable",
+      "description": "The MeteoSwiss open data could not be read for several refreshes in a row ({error}). Check your internet connection; if it is fine, the MeteoSwiss service is down or has changed. The sensors stay unavailable until then and recover on their own; this notice disappears with the next successful refresh."
+    }
+  }
+}

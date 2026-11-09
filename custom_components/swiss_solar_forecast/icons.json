@@ -1,0 +1,18 @@
+{
+  "entity": {
+    "sensor": {
+      "energy_today": { "default": "mdi:solar-power-variant" },
+      "energy_tomorrow": { "default": "mdi:solar-power-variant-outline" },
+      "energy_remaining_today": { "default": "mdi:sun-clock" },
+      "energy_day_after_tomorrow": { "default": "mdi:solar-power-variant-outline" },
+      "power_now": { "default": "mdi:solar-power" },
+      "power_next_hour": { "default": "mdi:solar-power" },
+      "peak_power_today": { "default": "mdi:weather-sunny" },
+      "peak_time_today": { "default": "mdi:clock-outline" },
+      "peak_power_tomorrow": { "default": "mdi:weather-sunny" },
+      "run": { "default": "mdi:clock-check-outline" },
+      "requests_today": { "default": "mdi:counter" },
+      "bytes_today": { "default": "mdi:download-network-outline" }
+    }
+  }
+}
