@@ -108,7 +108,13 @@
         "title": "The whole plant",
         "description": "The AC limit of the inverter: the hourly forecast of all strings together is clipped at it. Set it to the inverter's rated AC power.",
         "data": {
-          "plant_inverter_kw": "Inverter AC limit (0 = none)"
+          "plant_inverter_kw": "Inverter AC limit (0 = none)",
+          "terrain_horizon": "Terrain horizon (mountains and valley sides)",
+          "yield_sensor": "Yield meter for the self-calibration (optional)"
+        },
+        "data_description": {
+          "terrain_horizon": "Reads the horizon of the place once from the swisstopo elevation model. While the sun stands behind a mountain or a valley side, only the diffuse light counts. Bare terrain only: trees and buildings are not in the model.",
+          "yield_sensor": "An energy sensor that counts what the whole plant produces (total or daily counter, Wh, kWh or MWh). Every hour the forecast is compared with what was counted, and a factor per hour of the day is learned: shading by trees or buildings, snow, soiling. Leave empty to switch the self-calibration off; another meter or changed figures of a plane start the learning anew."
         }
       }
     },
@@ -159,6 +165,12 @@
       },
       "bytes_today": {
         "name": "Data read today"
+      },
+      "terrain_horizon": {
+        "name": "Terrain horizon"
+      },
+      "calibration_factor": {
+        "name": "Calibration factor"
       },
       "plane_energy_today": {
         "name": "{plane} energy today"

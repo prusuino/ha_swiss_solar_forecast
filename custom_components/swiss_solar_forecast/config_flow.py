@@ -20,6 +20,7 @@ from .const import (
     CONF_ADDRESS,
     CONF_AZIMUTH,
     CONF_DAMPING,
+    CONF_HORIZON,
     CONF_KWP,
     CONF_LOSSES,
     CONF_PLANE_LABEL,
@@ -38,6 +39,7 @@ from .const import (
     CONF_ROOF_IRRADIATION,
     CONF_ROOF_MONTHLY,
     CONF_TILT,
+    CONF_YIELD_SENSOR,
     DEFAULT_AZIMUTH,
     DEFAULT_DAMPING,
     DEFAULT_LOSSES,
@@ -406,9 +408,27 @@ class SwissSolarForecastOptionsFlow(OptionsFlow):
     async def async_step_plant(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         entry = self.config_entry
         if user_input is not None:
-            return self.async_create_entry(title="", data={**entry.options, CONF_PLANT_INVERTER_KW: float(user_input.get(CONF_PLANT_INVERTER_KW) or 0.0)})
+            options = {
+                **entry.options,
+                CONF_PLANT_INVERTER_KW: float(user_input.get(CONF_PLANT_INVERTER_KW) or 0.0),
+                CONF_HORIZON: bool(user_input.get(CONF_HORIZON, True)),
+            }
+            # an emptied field means: no meter, no self-calibration
+            options.pop(CONF_YIELD_SENSOR, None)
+            if user_input.get(CONF_YIELD_SENSOR):
+                options[CONF_YIELD_SENSOR] = str(user_input[CONF_YIELD_SENSOR])
+            return self.async_create_entry(title="", data=options)
         current = float(entry.options.get(CONF_PLANT_INVERTER_KW, entry.data.get(CONF_PLANT_INVERTER_KW, 0.0)) or 0.0)
-        return self.async_show_form(step_id="plant", data_schema=vol.Schema({vol.Required(CONF_PLANT_INVERTER_KW, default=current): _inverter_selector()}))
+        schema = vol.Schema(
+            {
+                vol.Required(CONF_PLANT_INVERTER_KW, default=current): _inverter_selector(),
+                vol.Required(CONF_HORIZON, default=bool(entry.options.get(CONF_HORIZON, True))): selector.BooleanSelector(),
+                vol.Optional(CONF_YIELD_SENSOR, description={"suggested_value": entry.options.get(CONF_YIELD_SENSOR)}): selector.EntitySelector(
+                    selector.EntitySelectorConfig(domain="sensor", device_class="energy")
+                ),
+            }
+        )
+        return self.async_show_form(step_id="plant", data_schema=schema)
 
     async def async_step_plane(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         planes = self._planes()

@@ -7,10 +7,11 @@ import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers.storage import Store
 from homeassistant.helpers.typing import ConfigType
 
 from .const import DOMAIN
-from .coordinator import SolarForecastCoordinator
+from .coordinator import STORE_VERSION, SolarForecastCoordinator, storage_key
 from .issues import async_clear_entry_issues
 
 type SolarForecastConfigEntry = ConfigEntry[SolarForecastCoordinator]
@@ -30,6 +31,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: SolarForecastConfigEntry
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    entry.async_on_unload(coordinator.async_start_learning())
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     return True
 
@@ -42,5 +44,11 @@ async def _async_update_listener(hass: HomeAssistant, entry: SolarForecastConfig
 async def async_unload_entry(hass: HomeAssistant, entry: SolarForecastConfigEntry) -> bool:
     unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unloaded:
+        await entry.runtime_data.async_save()
         async_clear_entry_issues(hass, entry.entry_id)
     return unloaded
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: SolarForecastConfigEntry) -> None:
+    """A removed plant leaves nothing behind: its terrain horizon and what the calibration learned go too."""
+    await Store(hass, STORE_VERSION, storage_key(entry.entry_id)).async_remove()

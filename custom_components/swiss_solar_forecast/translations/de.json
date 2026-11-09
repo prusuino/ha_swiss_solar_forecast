@@ -108,7 +108,13 @@
         "title": "Die ganze Anlage",
         "description": "Die AC-Grenze des Wechselrichters: die Stundenprognose aller Strings zusammen wird daran gekappt. Auf die AC-Nennleistung des Wechselrichters setzen.",
         "data": {
-          "plant_inverter_kw": "Wechselrichter-Grenze AC (0 = keine)"
+          "plant_inverter_kw": "Wechselrichter-Grenze AC (0 = keine)",
+          "terrain_horizon": "Geländehorizont (Berge und Talflanken)",
+          "yield_sensor": "Ertragszähler für die Selbstkalibrierung (optional)"
+        },
+        "data_description": {
+          "terrain_horizon": "Liest den Horizont des Standorts einmal aus dem Höhenmodell von swisstopo. Solange die Sonne hinter einem Berg oder einer Talflanke steht, zählt nur das diffuse Licht. Nur das blanke Gelände: Bäume und Gebäude sind im Modell nicht enthalten.",
+          "yield_sensor": "Ein Energiesensor, der zählt, was die ganze Anlage produziert (Gesamt- oder Tageszähler, Wh, kWh oder MWh). Jede Stunde wird die Prognose mit dem gezählten Ertrag verglichen und daraus ein Faktor je Tagesstunde gelernt: Verschattung durch Bäume oder Gebäude, Schnee, Verschmutzung. Leer lassen schaltet die Selbstkalibrierung aus; ein anderer Zähler oder geänderte Werte einer Fläche lassen das Lernen neu beginnen."
         }
       }
     },
@@ -159,6 +165,12 @@
       },
       "bytes_today": {
         "name": "Gelesene Daten heute"
+      },
+      "terrain_horizon": {
+        "name": "Geländehorizont"
+      },
+      "calibration_factor": {
+        "name": "Kalibrierfaktor"
       },
       "plane_energy_today": {
         "name": "{plane} Ertrag heute"

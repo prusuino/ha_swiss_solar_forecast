@@ -108,7 +108,13 @@
         "title": "L'intero impianto",
         "description": "Il limite AC dell'inverter: la previsione oraria di tutte le stringhe insieme viene tagliata a questo valore. Impostate la potenza AC nominale dell'inverter.",
         "data": {
-          "plant_inverter_kw": "Limite AC dell'inverter (0 = nessuno)"
+          "plant_inverter_kw": "Limite AC dell'inverter (0 = nessuno)",
+          "terrain_horizon": "Orizzonte del terreno (montagne e fianchi della valle)",
+          "yield_sensor": "Contatore di produzione per l'autocalibrazione (facoltativo)"
+        },
+        "data_description": {
+          "terrain_horizon": "Legge una volta l'orizzonte del luogo dal modello altimetrico di swisstopo. Finché il sole si trova dietro una montagna o un fianco della valle, conta solo la luce diffusa. Solo terreno nudo: alberi ed edifici non sono nel modello.",
+          "yield_sensor": "Un sensore di energia che conta ciò che produce l'intero impianto (contatore totale o giornaliero, Wh, kWh o MWh). Ogni ora la previsione viene confrontata con la produzione contata e si apprende un fattore per ogni ora del giorno: ombreggiamento da alberi o edifici, neve, sporco. Lasciate vuoto per disattivare l'autocalibrazione; un altro contatore o valori modificati di una falda fanno ricominciare l'apprendimento."
         }
       }
     },
@@ -159,6 +165,12 @@
       },
       "bytes_today": {
         "name": "Dati letti oggi"
+      },
+      "terrain_horizon": {
+        "name": "Orizzonte del terreno"
+      },
+      "calibration_factor": {
+        "name": "Fattore di calibrazione"
       },
       "plane_energy_today": {
         "name": "{plane} energia oggi"

@@ -192,3 +192,24 @@ async def test_reconfigure_keeps_known_planes_and_adds_one(hass: HomeAssistant, 
     assert [p["label"] for p in planes] == ["South-east", "Carport"]
     assert planes[0]["roof_id"] == 5001 and "roof_id" not in planes[1]
     assert CONF_PLANES not in entry.options
+
+
+async def test_options_terrain_horizon_and_yield_meter(hass: HomeAssistant, enable_custom_integrations) -> None:
+    entry = _entry()
+    entry.add_to_hass(hass)
+    with patch("custom_components.swiss_solar_forecast.async_setup_entry", return_value=True):
+        result = await hass.config_entries.options.async_init(entry.entry_id)
+        result = await hass.config_entries.options.async_configure(result["flow_id"], {"plane": "plant"})
+        assert result["step_id"] == "plant"
+        assert {"plant_inverter_kw", "terrain_horizon", "yield_sensor"} == {str(k) for k in result["data_schema"].schema}
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"], {"plant_inverter_kw": 12.0, "terrain_horizon": False, "yield_sensor": "sensor.pv_total"}
+        )
+        assert result["type"] is FlowResultType.CREATE_ENTRY
+        assert entry.options == {"plant_inverter_kw": 12.0, "terrain_horizon": False, "yield_sensor": "sensor.pv_total"}
+        # the meter is taken out again, the horizon is back on by default
+        result = await hass.config_entries.options.async_init(entry.entry_id)
+        result = await hass.config_entries.options.async_configure(result["flow_id"], {"plane": "plant"})
+        result = await hass.config_entries.options.async_configure(result["flow_id"], {"plant_inverter_kw": 12.0, "terrain_horizon": True})
+        assert result["type"] is FlowResultType.CREATE_ENTRY
+        assert entry.options == {"plant_inverter_kw": 12.0, "terrain_horizon": True}

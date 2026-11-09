@@ -108,7 +108,13 @@
         "title": "Toute l'installation",
         "description": "La limite AC de l'onduleur : la prévision horaire de tous les strings ensemble y est écrêtée. Mettez la puissance AC nominale de l'onduleur.",
         "data": {
-          "plant_inverter_kw": "Limite AC de l'onduleur (0 = aucune)"
+          "plant_inverter_kw": "Limite AC de l'onduleur (0 = aucune)",
+          "terrain_horizon": "Horizon du terrain (montagnes et flancs de vallée)",
+          "yield_sensor": "Compteur de production pour l'auto-calibration (facultatif)"
+        },
+        "data_description": {
+          "terrain_horizon": "Lit une fois l'horizon du lieu dans le modèle altimétrique de swisstopo. Tant que le soleil se trouve derrière une montagne ou un flanc de vallée, seule la lumière diffuse compte. Terrain nu uniquement : arbres et bâtiments ne figurent pas dans le modèle.",
+          "yield_sensor": "Un capteur d'énergie qui compte ce que produit toute l'installation (compteur total ou journalier, Wh, kWh ou MWh). Chaque heure, la prévision est comparée à la production comptée et un facteur par heure de la journée est appris : ombrage par des arbres ou des bâtiments, neige, salissure. Laissez vide pour désactiver l'auto-calibration ; un autre compteur ou des valeurs modifiées d'un pan font recommencer l'apprentissage."
         }
       }
     },
@@ -159,6 +165,12 @@
       },
       "bytes_today": {
         "name": "Données lues aujourd'hui"
+      },
+      "terrain_horizon": {
+        "name": "Horizon du terrain"
+      },
+      "calibration_factor": {
+        "name": "Facteur de calibration"
       },
       "plane_energy_today": {
         "name": "{plane} énergie aujourd'hui"

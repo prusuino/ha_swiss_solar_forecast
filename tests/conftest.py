@@ -1,5 +1,6 @@
-"""Shared fixtures: a forecast run served from memory, so no test touches
-the MeteoSwiss servers."""
+"""Shared fixtures: a forecast run served from memory and a flat terrain
+horizon, so no test touches the MeteoSwiss or the swisstopo servers, and
+a store kept in memory, so none writes to disk."""
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
@@ -7,6 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
+from custom_components.swiss_solar_forecast.horizon import Horizon, directions
 from custom_components.swiss_solar_forecast.ogd import ForecastData, Point
 
 ZURICH = Point(point_type=2, point_id=800100, name="Zürich", postal_code="8001", station_abbr="SMA", height=408.0, lat=47.3769, lon=8.5417)
@@ -48,3 +50,26 @@ def fake_forecast():
         patch("custom_components.swiss_solar_forecast.coordinator.async_fetch_forecast", return_value=clear_sky_run()),
     ):
         yield
+
+
+def horizon_reply(elevation_of=lambda azimuth: 0.0):
+    """What the terrain read returns: a horizon made by `elevation_of`, five requests, some bytes."""
+
+    async def _reply(session, lat, lon, now=None):
+        elevations = tuple(float(elevation_of(azimuth)) for azimuth in directions())
+        return Horizon(lat=lat, lon=lon, site_height=408.0, elevations=elevations, fetched="2026-06-21T10:15:00+00:00"), 5, 2000
+
+    return _reply
+
+
+@pytest.fixture(autouse=True)
+def memory_store(hass_storage):
+    """What an entry keeps stays in memory."""
+    return hass_storage
+
+
+@pytest.fixture(autouse=True)
+def fake_horizon():
+    """The terrain is flat unless a test sets another `side_effect`."""
+    with patch("custom_components.swiss_solar_forecast.coordinator.async_fetch_horizon", side_effect=horizon_reply()) as mock:
+        yield mock

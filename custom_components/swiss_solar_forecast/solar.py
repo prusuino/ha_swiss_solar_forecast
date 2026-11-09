@@ -17,6 +17,7 @@ below the uncertainty of the forecast itself.
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
@@ -88,9 +89,31 @@ def sun_position(when: datetime, lat: float, lon: float) -> SunPosition:
     return SunPosition(elevation=elevation, azimuth=azimuth % 360.0)
 
 
-def plane_irradiance(ghi: float, dhi: float | None, sun: SunPosition, plane: Plane) -> float:
+def beam_fraction(start: datetime, lat: float, lon: float, horizon: Callable[[float], float] | None) -> float:
+    """The share of an hour's direct beam that clears the terrain: the sun
+    is looked at every ten minutes of the hour and counts, weighted with
+    its height (a high sun carries more of the hour's beam), when it stands
+    above the horizon in its direction. `horizon` gives the terrain's
+    elevation angle for a compass bearing; without one nothing is blocked."""
+    if horizon is None:
+        return 1.0
+    total = clear = 0.0
+    for minute in range(5, 60, 10):
+        sun = sun_position(start + timedelta(minutes=minute), lat, lon)
+        weight = math.sin(math.radians(sun.elevation))
+        if weight <= 0:
+            continue
+        total += weight
+        if sun.elevation > horizon(sun.azimuth):
+            clear += weight
+    return clear / total if total > 0 else 1.0
+
+
+def plane_irradiance(ghi: float, dhi: float | None, sun: SunPosition, plane: Plane, beam_factor: float = 1.0) -> float:
     """Irradiance on the module plane in W/m² from the global (and, when
-    forecast, the diffuse) irradiance on the horizontal."""
+    forecast, the diffuse) irradiance on the horizontal. `beam_factor` is
+    the share of the direct beam that reaches the place (terrain horizon);
+    the diffuse and the reflected light are not reduced by it."""
     ghi = max(0.0, ghi)
     if ghi <= 0:
         return 0.0
@@ -106,7 +129,7 @@ def plane_irradiance(ghi: float, dhi: float | None, sun: SunPosition, plane: Pla
         if cos_aoi > 0 and cos_zenith > 0.05:
             beam = beam_h / cos_zenith * cos_aoi
             # a low sun on the horizontal file cannot produce more on the plane than a plausible normal irradiance
-            beam = min(beam, 1100.0 * cos_aoi)
+            beam = min(beam, 1100.0 * cos_aoi) * min(1.0, max(0.0, beam_factor))
     diffuse = dhi * (1 + math.cos(tilt_r)) / 2
     reflected = ghi * ALBEDO * (1 - math.cos(tilt_r)) / 2
     return beam + diffuse + reflected
@@ -160,6 +183,7 @@ class HourForecast:
     temperature: float | None
     poa: float
     power_kw: float
+    beam_fraction: float = 1.0  # share of the direct beam that clears the terrain horizon
 
     @property
     def energy_wh(self) -> float:
@@ -167,17 +191,24 @@ class HourForecast:
 
 
 def forecast_hours(
-    rows: list[tuple[datetime, float | None, float | None, float | None]], lat: float, lon: float, plane: Plane
+    rows: list[tuple[datetime, float | None, float | None, float | None]],
+    lat: float,
+    lon: float,
+    plane: Plane,
+    horizon: Callable[[float], float] | None = None,
 ) -> list[HourForecast]:
     """The hourly plane output from rows of (timestamp, ghi, dhi,
     temperature). A MeteoSwiss hourly mean covers the hour that ends at its
-    timestamp; the sun is taken at the middle of that hour."""
+    timestamp; the sun is taken at the middle of that hour. With a terrain
+    horizon the direct beam counts only for the part of the hour in which
+    the sun stands above it."""
     out: list[HourForecast] = []
     for ts, ghi, dhi, temp in rows:
         if ghi is None:
             continue
         start = ts - timedelta(hours=1)
         sun = sun_position(start + timedelta(minutes=30), lat, lon)
-        poa = plane_irradiance(ghi, dhi, sun, plane)
-        out.append(HourForecast(start=start, ghi=ghi, dhi=dhi, temperature=temp, poa=poa, power_kw=plane_power_kw(poa, temp, plane)))
+        fraction = beam_fraction(start, lat, lon, horizon) if ghi > 0 else 1.0
+        poa = plane_irradiance(ghi, dhi, sun, plane, fraction)
+        out.append(HourForecast(start=start, ghi=ghi, dhi=dhi, temperature=temp, poa=poa, power_kw=plane_power_kw(poa, temp, plane), beam_fraction=fraction))
     return out

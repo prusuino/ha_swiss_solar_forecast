@@ -14,7 +14,9 @@
       "forecast_vs_typical": { "default": "mdi:percent-outline" },
       "run": { "default": "mdi:clock-check-outline" },
       "requests_today": { "default": "mdi:counter" },
-      "bytes_today": { "default": "mdi:download-network-outline" }
+      "bytes_today": { "default": "mdi:download-network-outline" },
+      "terrain_horizon": { "default": "mdi:image-filter-hdr" },
+      "calibration_factor": { "default": "mdi:tune-variant" }
     }
   }
 }

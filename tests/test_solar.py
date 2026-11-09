@@ -1,5 +1,6 @@
 """The model with known numbers: sun position, transposition, temperature
-derating, clipping, damping and the hourly list."""
+derating, clipping, damping, the hourly list and the terrain horizon
+in front of the sun."""
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
@@ -7,6 +8,7 @@ from datetime import UTC, datetime, timedelta
 from custom_components.swiss_solar_forecast.solar import (
     Plane,
     SunPosition,
+    beam_fraction,
     forecast_hours,
     plane_irradiance,
     plane_power_kw,
@@ -85,3 +87,29 @@ def test_forecast_hours_cover_the_hour_before_the_timestamp() -> None:
     assert hours[0].start == ts - timedelta(hours=1)
     assert hours[0].power_kw > 5.0
     assert hours[0].energy_wh == hours[0].power_kw * 1000
+
+
+def test_beam_fraction_of_an_hour() -> None:
+    noon = datetime(2026, 6, 21, 11, 0, tzinfo=UTC)
+    sunrise = datetime(2026, 6, 21, 4, 0, tzinfo=UTC)  # the sun rose in Bern at about 03:40 UTC and climbs from 3 to 12 degrees in this hour
+    assert beam_fraction(noon, *BERN, None) == 1.0
+    assert beam_fraction(noon, *BERN, lambda azimuth: 5.0) == 1.0
+    assert beam_fraction(noon, *BERN, lambda azimuth: 89.0) == 0.0
+    assert beam_fraction(sunrise, *BERN, lambda azimuth: 0.0) == 1.0  # a flat horizon takes nothing
+    assert beam_fraction(sunrise, *BERN, lambda azimuth: 20.0) == 0.0
+    part = beam_fraction(sunrise, *BERN, lambda azimuth: 8.0)  # the sun climbs past 8 degrees within this hour
+    assert 0.0 < part < 1.0
+    assert beam_fraction(datetime(2026, 6, 21, 0, 0, tzinfo=UTC), *BERN, lambda azimuth: 10.0) == 1.0  # night: nothing to take
+
+
+def test_a_mountain_in_front_of_the_sun_leaves_the_diffuse_light() -> None:
+    rows = [(datetime(2026, 6, 21, 12, 0, tzinfo=UTC), 800.0, 250.0, 22.0)]
+    free = forecast_hours(rows, *BERN, SOUTH_30)[0]
+    flat = forecast_hours(rows, *BERN, SOUTH_30, lambda azimuth: 0.0)[0]
+    wall = forecast_hours(rows, *BERN, SOUTH_30, lambda azimuth: 89.0)[0]
+    assert free.beam_fraction == 1.0 and flat.power_kw == free.power_kw
+    assert wall.beam_fraction == 0.0
+    assert 0 < wall.power_kw < 0.45 * free.power_kw
+    # a wall only in the east does not touch the noon hour
+    east = forecast_hours(rows, *BERN, SOUTH_30, lambda azimuth: 60.0 if azimuth < 120 else 0.0)[0]
+    assert east.power_kw == free.power_kw

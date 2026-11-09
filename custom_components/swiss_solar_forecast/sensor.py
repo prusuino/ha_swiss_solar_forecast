@@ -1,16 +1,17 @@
 """Sensors of the plant (the planes' sum) and of every plane: energy of
 today, tomorrow and the rest of today, power now and next hour, today's
-peak, the cadastre's typical day, and diagnostics about the run and the
-traffic."""
+peak, the cadastre's typical day, and diagnostics about the run, the
+traffic, the terrain horizon and the self-calibration."""
 from __future__ import annotations
 
 from calendar import monthrange
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, time, timedelta
 from typing import Any
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorStateClass
 from homeassistant.const import EntityCategory, UnitOfEnergy, UnitOfPower
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -20,6 +21,7 @@ from . import SolarForecastConfigEntry
 from .const import ATTRIBUTION, DOMAIN
 from .coordinator import ForecastSnapshot, PlaneConfig, Series, SolarForecastCoordinator
 from .device import device_info, entry_suffix
+from .horizon import ATTRIBUTION_TERRAIN
 from .sonnendach import ATTRIBUTION_SONNENDACH
 
 # key: (device class, unit, state class, enabled by default, entity category)
@@ -39,9 +41,12 @@ _META: dict[str, tuple[SensorDeviceClass | None, str | None, SensorStateClass | 
     "run": (SensorDeviceClass.TIMESTAMP, None, None, False, EntityCategory.DIAGNOSTIC),
     "requests_today": (None, None, SensorStateClass.TOTAL, False, EntityCategory.DIAGNOSTIC),
     "bytes_today": (SensorDeviceClass.DATA_SIZE, "B", SensorStateClass.TOTAL, False, EntityCategory.DIAGNOSTIC),
+    # only with the terrain horizon switched on / with a yield meter set
+    "terrain_horizon": (None, "°", SensorStateClass.MEASUREMENT, True, EntityCategory.DIAGNOSTIC),
+    "calibration_factor": (None, None, SensorStateClass.MEASUREMENT, True, EntityCategory.DIAGNOSTIC),
 }
 _ROOF_KEYS = ("typical_day_energy", "forecast_vs_typical")
-_DIAGNOSTIC_KEYS = ("run", "requests_today", "bytes_today")
+_DIAGNOSTIC_KEYS = ("run", "requests_today", "bytes_today", "terrain_horizon", "calibration_factor")
 # per plane: the figures worth a sensor of their own (the rest is in the plant's attributes)
 _PLANE_KEYS = ("energy_today", "energy_tomorrow", "power_now", "peak_power_today", "typical_day_energy", "forecast_vs_typical")
 _PLANE_ENABLED = ("energy_today", "power_now")
@@ -51,7 +56,15 @@ _TICK = timedelta(minutes=5)  # the time-dependent values (now, remaining) move 
 async def async_setup_entry(hass: HomeAssistant, entry: SolarForecastConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
     coordinator = entry.runtime_data
     any_roof = any(p.has_roof for p in coordinator.planes)
-    entities: list[SensorEntity] = [PlantSensor(coordinator, entry, key) for key in _META if any_roof or key not in _ROOF_KEYS]
+    optional = {"terrain_horizon": coordinator.use_horizon, "calibration_factor": coordinator.calibration is not None}
+    registry = er.async_get(hass)
+    for key, wanted in optional.items():
+        # switched off in the options: the sensor goes, it would only stand there unavailable
+        if not wanted and (entity_id := registry.async_get_entity_id("sensor", DOMAIN, f"{entry.entry_id}_{key}")):
+            registry.async_remove(entity_id)
+    entities: list[SensorEntity] = [
+        PlantSensor(coordinator, entry, key) for key in _META if (any_roof or key not in _ROOF_KEYS) and optional.get(key, True)
+    ]
     if len(coordinator.planes) > 1:
         for plane in coordinator.planes:
             entities += [PlaneSensor(coordinator, entry, key, plane) for key in _PLANE_KEYS if plane.has_roof or key not in _ROOF_KEYS]
@@ -123,6 +136,8 @@ class _Base(CoordinatorEntity[SolarForecastCoordinator], SensorEntity):
             self._attr_entity_category = category
         if key in _ROOF_KEYS:
             self._attr_attribution = ATTRIBUTION_SONNENDACH
+        elif key == "terrain_horizon":
+            self._attr_attribution = ATTRIBUTION_TERRAIN
         self._attr_entity_registry_enabled_default = enabled
         self._attr_translation_key = key
         self._attr_unique_id = f"{entry.entry_id}_{suffix}{key}"
@@ -133,6 +148,10 @@ class _Base(CoordinatorEntity[SolarForecastCoordinator], SensorEntity):
             self._attr_suggested_display_precision = 2
         elif unit == UnitOfPower.WATT:
             self._attr_suggested_display_precision = 0
+        elif key == "terrain_horizon":
+            self._attr_suggested_display_precision = 1
+        elif key == "calibration_factor":
+            self._attr_suggested_display_precision = 2
 
     @property
     def available(self) -> bool:
@@ -155,6 +174,12 @@ class PlantSensor(_Base):
             return snap.requests_today
         if self._key == "bytes_today":
             return snap.bytes_today
+        if self._key == "terrain_horizon":
+            horizon = self.coordinator.horizon
+            return None if horizon is None else round(horizon.highest[0], 1)
+        if self._key == "calibration_factor":
+            calibration = self.coordinator.calibration
+            return None if calibration is None else round(calibration.overall, 3)
         day0, day1, day2 = self._days()
         if self._key == "forecast_vs_typical":
             # like against like: only the planes with a cadastre roof have an expectation
@@ -175,6 +200,33 @@ class PlantSensor(_Base):
                 "planes": {p.label: _kwh(series.day_energy_wh(day0)) for p, series in zip(self.coordinator.planes, snap.planes)},
                 "kwp": round(self.coordinator.total_kwp, 2),
                 "diffuse_from_forecast": snap.diffuse_forecast,
+                "terrain_horizon": self.coordinator.horizon is not None,
+                "calibrated": self.coordinator.calibration is not None and self.coordinator.calibration.samples > 0,
+            }
+        if self._key == "terrain_horizon":
+            horizon = self.coordinator.horizon
+            if horizon is None:
+                return None
+            return {
+                "highest_azimuth": horizon.highest[1],
+                "site_height": horizon.site_height,
+                "profile": horizon.profile(),
+                "fetched": horizon.fetched or None,
+            }
+        if self._key == "calibration_factor":
+            calibration = self.coordinator.calibration
+            if calibration is None:
+                return None
+            day0 = self._days()[0]
+            return {
+                # per hour of the day in local time; learned in UTC, so the labels move with the clock change
+                "hourly": {
+                    dt_util.as_local(datetime.combine(day0, time(hour), UTC)).strftime("%H:%M"): factor for hour, factor in calibration.factors().items()
+                },
+                "samples": calibration.samples,
+                "last_sample": calibration.last_sample or None,
+                "yield_sensor": self.coordinator.yield_sensor,
+                "energy_today_uncalibrated": _kwh(snap.raw_plant.day_energy_wh(day0)),
             }
         if self._key == "run":
             return {"fetched": snap.fetched.isoformat() if snap.fetched else None, "missing": snap.missing}

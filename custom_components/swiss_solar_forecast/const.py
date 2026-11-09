@@ -33,6 +33,8 @@ CONF_POINT_HEIGHT = "point_height"
 CONF_PLANT_NAME = "name"
 CONF_PLANES = "planes"  # list of plane dicts (the keys below), one per roof plane of the plant
 CONF_PLANT_INVERTER_KW = "plant_inverter_kw"  # AC limit of the plant as a whole, kW; 0 = none
+CONF_HORIZON = "terrain_horizon"  # whether the terrain horizon (swisstopo elevation model) blocks the direct beam
+CONF_YIELD_SENSOR = "yield_sensor"  # entity id of the plant's energy meter, for the self-calibration; empty = none
 CONF_PLANE_LABEL = "label"  # short name of the plane, e.g. "SW 230°" or the user's text
 CONF_KWP = "kwp"  # installed DC peak power of the plane, kWp
 CONF_AZIMUTH = "azimuth"  # compass bearing the modules face, degrees: 0 north, 90 east, 180 south, 270 west
