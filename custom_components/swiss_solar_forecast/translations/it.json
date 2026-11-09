@@ -3,33 +3,37 @@
     "step": {
       "user": {
         "title": "Swiss Solar Forecast",
-        "description": "Dove si trova l'impianto? La posizione di Home Assistant è precompilata: spostate il marcatore sul tetto o inserite un indirizzo (il registro federale degli indirizzi conosce ogni indirizzo della Svizzera). Il passo successivo elenca le falde di quell'edificio dal catasto Tettosolare dell'Ufficio federale dell'energia; spuntate tutte le falde con moduli e inserite poi i valori falda per falda. Una voce corrisponde all'intero impianto.",
+        "description": "Dove si trova l'impianto? La posizione di Home Assistant è precompilata: spostate il marcatore sul tetto o inserite un indirizzo (il registro federale degli indirizzi conosce ogni indirizzo della Svizzera). Il passo successivo elenca le falde di quell'edificio dal catasto Tettosolare dell'Ufficio federale dell'energia; spuntate tutte le falde con moduli e inserite poi i valori falda per falda. Una voce è un impianto: un inverter con le sue stringhe. Un secondo inverter nello stesso luogo è una seconda voce con un altro nome.",
         "data": {
           "name": "Nome dell'impianto",
           "location": "Posizione (marcatore sul tetto)",
-          "search": "Indirizzo (facoltativo; sostituisce il marcatore)"
+          "search": "Indirizzo (facoltativo; sostituisce il marcatore)",
+          "plant_inverter_kw": "Limite AC dell'inverter (0 = nessuno)"
         }
       },
       "address": {
         "title": "Scegliere l'indirizzo",
         "description": "Più indirizzi corrispondono. Scegliete il vostro.",
-        "data": { "search": "Indirizzo" }
+        "data": {
+          "search": "Indirizzo"
+        }
       },
       "roofs": {
         "title": "Falde del tetto",
         "description": "{count} falda/e a {place} nel catasto Tettosolare, la più grande per prima: orientamento, inclinazione, superficie, classe di idoneità (1 bassa … 5 ottima) e resa elettrica a lungo termine dell'intera falda. Spuntate ogni falda con moduli. L'ultima voce (✎) aggiunge una falda inserita a mano, per un tetto sconosciuto al catasto, un garage su un altro edificio o un impianto a terra; spuntatela insieme alle altre se servono entrambe.",
-        "data": { "roofs": "Falde con moduli" }
+        "data": {
+          "roofs": "Falde con moduli"
+        }
       },
       "plane": {
         "title": "Falda {index} di {total}",
-        "description": "Tetto: {roof}. Orientamento e inclinazione vengono dal catasto; correggeteli se sapete meglio. Inserite la potenza di picco installata di questa falda in kWp (la superficie del catasto ospiterebbe circa {kwp_hint} kWp di moduli moderni). Le perdite comprendono cablaggio, inverter, sporcizia e mismatch (14 % è un valore usuale). Il limite dell'inverter taglia la potenza AC di questa falda (0 = nessuno). Il fattore di smorzamento scala il risultato, per la taratura sulla resa reale.",
+        "description": "Tetto: {roof}. Orientamento e inclinazione vengono dal catasto; correggeteli se sapete meglio. Inserite la potenza di picco installata di questa falda in kWp (la superficie del catasto ospiterebbe circa {kwp_hint} kWp di moduli moderni). Le perdite comprendono cablaggio, inverter, sporcizia e mismatch (14 % è un valore usuale). Il fattore di smorzamento scala il risultato, per la taratura sulla resa reale.",
         "data": {
           "label": "Nome della falda",
           "kwp": "Potenza di picco della falda (kWp)",
           "azimuth": "Azimut (0 nord, 90 est, 180 sud, 270 ovest)",
           "tilt": "Inclinazione rispetto all'orizzontale (0 piatto, 90 verticale)",
           "losses": "Perdite di sistema",
-          "inverter_kw": "Limite AC dell'inverter (0 = nessuno)",
           "damping": "Fattore di smorzamento (1 = come calcolato)"
         }
       },
@@ -44,12 +48,16 @@
       "reconfigure_address": {
         "title": "Scegliere l'indirizzo",
         "description": "Più indirizzi corrispondono. Scegliete il vostro.",
-        "data": { "search": "Indirizzo" }
+        "data": {
+          "search": "Indirizzo"
+        }
       },
       "reconfigure_roofs": {
         "title": "Falde del tetto",
         "description": "{count} falda/e a {place} nel catasto Tettosolare, la più grande per prima. Spuntate ogni falda con moduli; l'ultima voce (✎) aggiunge una falda inserita a mano.",
-        "data": { "roofs": "Falde con moduli" }
+        "data": {
+          "roofs": "Falde con moduli"
+        }
       },
       "reconfigure_plane": {
         "title": "Falda {index} di {total}",
@@ -60,7 +68,6 @@
           "azimuth": "Azimut (0 nord, 90 est, 180 sud, 270 ovest)",
           "tilt": "Inclinazione rispetto all'orizzontale (0 piatto, 90 verticale)",
           "losses": "Perdite di sistema",
-          "inverter_kw": "Limite AC dell'inverter (0 = nessuno)",
           "damping": "Fattore di smorzamento (1 = come calcolato)"
         }
       }
@@ -71,7 +78,7 @@
       "pick_one": "Spuntate almeno una falda, o la matita per una falda inserita a mano."
     },
     "abort": {
-      "already_configured": "In questo luogo è già configurato un impianto. Modificate le sue falde con Riconfigura.",
+      "already_configured": "In questo luogo è già configurato un impianto con questo nome. Modificate le sue falde con Riconfigura, o date un altro nome a un secondo inverter.",
       "cannot_connect": "I dati aperti di MeteoSvizzera non sono stati letti. Verificate la connessione internet e riprovate.",
       "reconfigure_successful": "L'impianto è stato aggiornato."
     }
@@ -80,20 +87,28 @@
     "step": {
       "init": {
         "title": "Quale falda?",
-        "description": "Le falde dell'impianto. Scegliete quella di cui volete cambiare i valori. Per aggiungere o togliere falde o spostare l'impianto, usate Riconfigura nel menu della voce.",
-        "data": { "plane": "Falda" }
+        "description": "Le falde dell'impianto, e Σ per l'intero impianto (limite dell'inverter). Scegliete cosa cambiare. Per aggiungere o togliere falde o spostare l'impianto, usate Riconfigura nel menu della voce.",
+        "data": {
+          "plane": "Falda"
+        }
       },
       "plane": {
         "title": "Falda {plane}",
-        "description": "Potenza di picco, orientamento, inclinazione, perdite, limite dell'inverter e smorzamento di questa falda. Una modifica ricarica la voce; ID e cronologia restano. Smorzamento per la taratura: se la previsione è del 10 % troppo alta su alcune settimane di sole, impostate 0.9.",
+        "description": "Potenza di picco, orientamento, inclinazione, perdite e smorzamento di questa falda. Una modifica ricarica la voce; ID e cronologia restano. Smorzamento per la taratura: se la previsione è del 10 % troppo alta su alcune settimane di sole, impostate 0.9.",
         "data": {
           "label": "Nome della falda",
           "kwp": "Potenza di picco della falda (kWp)",
           "azimuth": "Azimut (0 nord, 90 est, 180 sud, 270 ovest)",
           "tilt": "Inclinazione rispetto all'orizzontale (0 piatto, 90 verticale)",
           "losses": "Perdite di sistema",
-          "inverter_kw": "Limite AC dell'inverter (0 = nessuno)",
           "damping": "Fattore di smorzamento (1 = come calcolato)"
+        }
+      },
+      "plant": {
+        "title": "L'intero impianto",
+        "description": "Il limite AC dell'inverter: la previsione oraria di tutte le stringhe insieme viene tagliata a questo valore. Impostate la potenza AC nominale dell'inverter.",
+        "data": {
+          "plant_inverter_kw": "Limite AC dell'inverter (0 = nessuno)"
         }
       }
     },
@@ -103,26 +118,66 @@
   },
   "entity": {
     "sensor": {
-      "energy_today": { "name": "Energia oggi" },
-      "energy_tomorrow": { "name": "Energia domani" },
-      "energy_remaining_today": { "name": "Energia restante oggi" },
-      "energy_day_after_tomorrow": { "name": "Energia dopodomani" },
-      "power_now": { "name": "Potenza attuale" },
-      "power_next_hour": { "name": "Potenza prossima ora" },
-      "peak_power_today": { "name": "Potenza massima oggi" },
-      "peak_time_today": { "name": "Ora del massimo oggi" },
-      "peak_power_tomorrow": { "name": "Potenza massima domani" },
-      "typical_day_energy": { "name": "Giornata tipo (catasto)" },
-      "forecast_vs_typical": { "name": "Previsione vs giornata tipo" },
-      "run": { "name": "Run di previsione" },
-      "requests_today": { "name": "Richieste oggi" },
-      "bytes_today": { "name": "Dati letti oggi" },
-      "plane_energy_today": { "name": "{plane} energia oggi" },
-      "plane_energy_tomorrow": { "name": "{plane} energia domani" },
-      "plane_power_now": { "name": "{plane} potenza attuale" },
-      "plane_peak_power_today": { "name": "{plane} potenza massima oggi" },
-      "plane_typical_day_energy": { "name": "{plane} giornata tipo" },
-      "plane_forecast_vs_typical": { "name": "{plane} previsione vs giornata tipo" }
+      "energy_today": {
+        "name": "Energia oggi"
+      },
+      "energy_tomorrow": {
+        "name": "Energia domani"
+      },
+      "energy_remaining_today": {
+        "name": "Energia restante oggi"
+      },
+      "energy_day_after_tomorrow": {
+        "name": "Energia dopodomani"
+      },
+      "power_now": {
+        "name": "Potenza attuale"
+      },
+      "power_next_hour": {
+        "name": "Potenza prossima ora"
+      },
+      "peak_power_today": {
+        "name": "Potenza massima oggi"
+      },
+      "peak_time_today": {
+        "name": "Ora del massimo oggi"
+      },
+      "peak_power_tomorrow": {
+        "name": "Potenza massima domani"
+      },
+      "typical_day_energy": {
+        "name": "Giornata tipo (catasto)"
+      },
+      "forecast_vs_typical": {
+        "name": "Previsione vs giornata tipo"
+      },
+      "run": {
+        "name": "Run di previsione"
+      },
+      "requests_today": {
+        "name": "Richieste oggi"
+      },
+      "bytes_today": {
+        "name": "Dati letti oggi"
+      },
+      "plane_energy_today": {
+        "name": "{plane} energia oggi"
+      },
+      "plane_energy_tomorrow": {
+        "name": "{plane} energia domani"
+      },
+      "plane_power_now": {
+        "name": "{plane} potenza attuale"
+      },
+      "plane_peak_power_today": {
+        "name": "{plane} potenza massima oggi"
+      },
+      "plane_typical_day_energy": {
+        "name": "{plane} giornata tipo"
+      },
+      "plane_forecast_vs_typical": {
+        "name": "{plane} previsione vs giornata tipo"
+      }
     }
   },
   "issues": {

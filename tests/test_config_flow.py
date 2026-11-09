@@ -18,7 +18,7 @@ SHARES = {m: s for m, s in zip(range(1, 13), (3, 5, 8, 10, 12, 13, 13, 12, 9, 7,
 ROOF_SE = Roof(roof_id=5001, building_id=77, azimuth=130.0, tilt=23.0, area=85.0, suitability=4, suitability_text={"de": "Gut", "en": "Good"}, yield_kwh_year=14500.0, irradiation_kwh_m2_year=1180.0, monthly_share=SHARES)
 ROOF_NE = Roof(roof_id=5002, building_id=77, azimuth=50.0, tilt=23.0, area=60.0, suitability=2, suitability_text={"de": "Mittel", "en": "Mean"}, yield_kwh_year=8000.0, irradiation_kwh_m2_year=900.0, monthly_share=SHARES)
 ADDRESSES = [Address("Musterweg 1 8001 Zürich", 47.3769, 8.5417), Address("Musterweg 1a 8001 Zürich", 47.3770, 8.5418)]
-FIGURES = {"losses": 14, "inverter_kw": 0.0, "damping": 1.0}
+FIGURES = {"losses": 14, "damping": 1.0}
 
 
 @pytest.fixture
@@ -60,7 +60,7 @@ async def test_plant_with_two_cadastre_roofs(hass: HomeAssistant, enable_custom_
     assert len(planes) == 2
     assert planes[0]["label"] == "South-east" and planes[0]["azimuth"] == 140.0 and planes[0]["roof_id"] == 5001 and planes[0]["roof_class"] == 4
     assert planes[1]["label"] == "NE 50° / 23°" and planes[1]["kwp"] == 4.45 and planes[1]["roof_monthly"]["6"] == 13.0
-    assert result["result"].unique_id == "47.3700,8.5400"
+    assert result["result"].unique_id == "47.3700,8.5400:our-roof"
 
 
 async def test_address_with_matches_and_a_manual_plane(hass: HomeAssistant, enable_custom_integrations, fake_geo) -> None:
@@ -88,7 +88,7 @@ async def test_address_with_matches_and_a_manual_plane(hass: HomeAssistant, enab
     # the same place again is refused
     result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
     result = await hass.config_entries.flow.async_configure(
-        result["flow_id"], {"name": "Again", "location": {"latitude": 47.0, "longitude": 8.0}, "search": "Musterweg 1 Zürich"}
+        result["flow_id"], {"name": "Solar", "location": {"latitude": 47.0, "longitude": 8.0}, "search": "Musterweg 1 Zürich"}
     )
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {"search": "Musterweg 1 8001 Zürich"})
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {"roofs": ["5001"]})
@@ -135,7 +135,7 @@ PLANES = [
 def _entry() -> MockConfigEntry:
     return MockConfigEntry(
         domain=DOMAIN,
-        unique_id="47.3700,8.5400",
+        unique_id="47.3700,8.5400:our-roof",
         title="Our roof",
         data={"point_type": 2, "point_id": 800100, "point_name": "Zürich", "point_lat": 47.37, "point_lon": 8.54, "point_height": 408.0, "name": "Our roof", "address": "", "planes": PLANES},
     )
@@ -147,12 +147,18 @@ async def test_options_pick_a_plane_and_change_it(hass: HomeAssistant, enable_cu
     with patch("custom_components.swiss_solar_forecast.async_setup_entry", return_value=True):
         result = await hass.config_entries.options.async_init(entry.entry_id)
         assert result["step_id"] == "init"
+        result = await hass.config_entries.options.async_configure(result["flow_id"], {"plane": "plant"})
+        assert result["step_id"] == "plant"
+        result = await hass.config_entries.options.async_configure(result["flow_id"], {"plant_inverter_kw": 12.0})
+        assert result["type"] is FlowResultType.CREATE_ENTRY
+        assert entry.options["plant_inverter_kw"] == 12.0
+        result = await hass.config_entries.options.async_init(entry.entry_id)
         result = await hass.config_entries.options.async_configure(result["flow_id"], {"plane": "1"})
         assert result["step_id"] == "plane"
         assert result["description_placeholders"] == {"plane": "North-east"}
         assert _defaults(result)["kwp"] == 4.45
         result = await hass.config_entries.options.async_configure(
-            result["flow_id"], {"label": "North-east", "kwp": 4.45, "azimuth": 50, "tilt": 23, "losses": 12, "inverter_kw": 0.0, "damping": 0.9}
+            result["flow_id"], {"label": "North-east", "kwp": 4.45, "azimuth": 50, "tilt": 23, "losses": 12, "damping": 0.9}
         )
     assert result["type"] is FlowResultType.CREATE_ENTRY
     planes = entry.options[CONF_PLANES]

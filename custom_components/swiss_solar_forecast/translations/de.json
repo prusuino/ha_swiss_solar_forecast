@@ -3,33 +3,37 @@
     "step": {
       "user": {
         "title": "Swiss Solar Forecast",
-        "description": "Wo steht die Anlage? Der Standort von Home Assistant ist vorausgefüllt: Marker aufs Dach schieben oder eine Strassenadresse eingeben (das amtliche Adressregister kennt jede Adresse der Schweiz). Der nächste Schritt listet die Dachflächen dieses Gebäudes aus dem Sonnendach-Kataster des Bundesamts für Energie; du kreuzt alle Flächen mit Modulen an und gibst danach die Werte Fläche für Fläche ein. Ein Eintrag ist die ganze Anlage.",
+        "description": "Wo steht die Anlage? Der Standort von Home Assistant ist vorausgefüllt: Marker aufs Dach schieben oder eine Strassenadresse eingeben (das amtliche Adressregister kennt jede Adresse der Schweiz). Der nächste Schritt listet die Dachflächen dieses Gebäudes aus dem Sonnendach-Kataster des Bundesamts für Energie; du kreuzt alle Flächen mit Modulen an und gibst danach die Werte Fläche für Fläche ein. Ein Eintrag ist eine Anlage: ein Wechselrichter mit seinen Strings. Ein zweiter Wechselrichter am selben Ort ist ein zweiter Eintrag mit anderem Namen.",
         "data": {
           "name": "Name der Anlage",
           "location": "Standort (Marker auf dem Dach)",
-          "search": "Strassenadresse (optional; ersetzt den Marker)"
+          "search": "Strassenadresse (optional; ersetzt den Marker)",
+          "plant_inverter_kw": "Wechselrichter-Grenze AC (0 = keine)"
         }
       },
       "address": {
         "title": "Adresse wählen",
         "description": "Mehrere Adressen passen. Wähle deine.",
-        "data": { "search": "Adresse" }
+        "data": {
+          "search": "Adresse"
+        }
       },
       "roofs": {
         "title": "Dachflächen",
         "description": "{count} Dachfläche(n) bei {place} im Sonnendach-Kataster, die grösste zuerst: Ausrichtung, Neigung, Fläche, Eignungsklasse (1 gering … 5 top) und der langjährige Stromertrag der ganzen Fläche. Kreuze jede Fläche mit Modulen an. Der letzte Eintrag (✎) fügt eine Fläche hinzu, die du von Hand erfasst, für ein Dach, das der Kataster nicht kennt, eine Garage auf einem anderen Gebäude oder eine Freiflächenanlage; zusammen mit den anderen ankreuzen, wenn du beides brauchst.",
-        "data": { "roofs": "Flächen mit Modulen" }
+        "data": {
+          "roofs": "Flächen mit Modulen"
+        }
       },
       "plane": {
         "title": "Fläche {index} von {total}",
-        "description": "Dach: {roof}. Ausrichtung und Neigung kommen aus dem Kataster; korrigiere sie, wenn du es besser weisst. Trag die installierte Spitzenleistung dieser Fläche in kWp ein (die Katasterfläche fasst mit modernen Modulen etwa {kwp_hint} kWp). Verluste umfassen Verkabelung, Wechselrichter, Verschmutzung und Mismatch (14 % ist ein üblicher Wert). Die Wechselrichter-Grenze kappt die AC-Leistung dieser Fläche (0 = keine). Der Dämpfungsfaktor skaliert das Ergebnis, zum Abgleich mit dem echten Ertrag.",
+        "description": "Dach: {roof}. Ausrichtung und Neigung kommen aus dem Kataster; korrigiere sie, wenn du es besser weisst. Trag die installierte Spitzenleistung dieser Fläche in kWp ein (die Katasterfläche fasst mit modernen Modulen etwa {kwp_hint} kWp). Verluste umfassen Verkabelung, Wechselrichter, Verschmutzung und Mismatch (14 % ist ein üblicher Wert). Der Dämpfungsfaktor skaliert das Ergebnis, zum Abgleich mit dem echten Ertrag.",
         "data": {
           "label": "Name der Fläche",
           "kwp": "Spitzenleistung der Fläche (kWp)",
           "azimuth": "Azimut (0 Nord, 90 Ost, 180 Süd, 270 West)",
           "tilt": "Neigung zur Horizontalen (0 flach, 90 senkrecht)",
           "losses": "Systemverluste",
-          "inverter_kw": "Wechselrichter-Grenze AC (0 = keine)",
           "damping": "Dämpfungsfaktor (1 = wie berechnet)"
         }
       },
@@ -44,12 +48,16 @@
       "reconfigure_address": {
         "title": "Adresse wählen",
         "description": "Mehrere Adressen passen. Wähle deine.",
-        "data": { "search": "Adresse" }
+        "data": {
+          "search": "Adresse"
+        }
       },
       "reconfigure_roofs": {
         "title": "Dachflächen",
         "description": "{count} Dachfläche(n) bei {place} im Sonnendach-Kataster, die grösste zuerst. Kreuze jede Fläche mit Modulen an; der letzte Eintrag (✎) fügt eine von Hand erfasste Fläche hinzu.",
-        "data": { "roofs": "Flächen mit Modulen" }
+        "data": {
+          "roofs": "Flächen mit Modulen"
+        }
       },
       "reconfigure_plane": {
         "title": "Fläche {index} von {total}",
@@ -60,7 +68,6 @@
           "azimuth": "Azimut (0 Nord, 90 Ost, 180 Süd, 270 West)",
           "tilt": "Neigung zur Horizontalen (0 flach, 90 senkrecht)",
           "losses": "Systemverluste",
-          "inverter_kw": "Wechselrichter-Grenze AC (0 = keine)",
           "damping": "Dämpfungsfaktor (1 = wie berechnet)"
         }
       }
@@ -71,7 +78,7 @@
       "pick_one": "Mindestens eine Fläche ankreuzen, oder den Stift für eine von Hand erfasste Fläche."
     },
     "abort": {
-      "already_configured": "An diesem Ort ist schon eine Anlage eingerichtet. Ihre Flächen änderst du über Neu konfigurieren.",
+      "already_configured": "An diesem Ort ist schon eine Anlage mit diesem Namen eingerichtet. Ihre Flächen änderst du über Neu konfigurieren; ein zweiter Wechselrichter bekommt einen anderen Namen.",
       "cannot_connect": "Die Open Data von MeteoSchweiz konnten nicht gelesen werden. Internetverbindung prüfen und erneut versuchen.",
       "reconfigure_successful": "Die Anlage wurde aktualisiert."
     }
@@ -80,20 +87,28 @@
     "step": {
       "init": {
         "title": "Welche Fläche?",
-        "description": "Die Flächen der Anlage. Wähle die, deren Werte du ändern willst. Um Flächen hinzuzufügen oder zu entfernen oder die Anlage zu verschieben, Neu konfigurieren im Menü des Eintrags nutzen.",
-        "data": { "plane": "Fläche" }
+        "description": "Die Flächen der Anlage, und Σ für die Anlage als Ganzes (Wechselrichter-Grenze). Wähle, was du ändern willst. Um Flächen hinzuzufügen oder zu entfernen oder die Anlage zu verschieben, Neu konfigurieren im Menü des Eintrags nutzen.",
+        "data": {
+          "plane": "Fläche"
+        }
       },
       "plane": {
         "title": "Fläche {plane}",
-        "description": "Spitzenleistung, Ausrichtung, Neigung, Verluste, Wechselrichter-Grenze und Dämpfung dieser Fläche. Eine Änderung lädt den Eintrag neu; IDs und Verlauf bleiben. Dämpfung zum Abgleich: liegt die Prognose über ein paar sonnige Wochen 10 % zu hoch, 0.9 setzen.",
+        "description": "Spitzenleistung, Ausrichtung, Neigung, Verluste und Dämpfung dieser Fläche. Eine Änderung lädt den Eintrag neu; IDs und Verlauf bleiben. Dämpfung zum Abgleich: liegt die Prognose über ein paar sonnige Wochen 10 % zu hoch, 0.9 setzen.",
         "data": {
           "label": "Name der Fläche",
           "kwp": "Spitzenleistung der Fläche (kWp)",
           "azimuth": "Azimut (0 Nord, 90 Ost, 180 Süd, 270 West)",
           "tilt": "Neigung zur Horizontalen (0 flach, 90 senkrecht)",
           "losses": "Systemverluste",
-          "inverter_kw": "Wechselrichter-Grenze AC (0 = keine)",
           "damping": "Dämpfungsfaktor (1 = wie berechnet)"
+        }
+      },
+      "plant": {
+        "title": "Die ganze Anlage",
+        "description": "Die AC-Grenze des Wechselrichters: die Stundenprognose aller Strings zusammen wird daran gekappt. Auf die AC-Nennleistung des Wechselrichters setzen.",
+        "data": {
+          "plant_inverter_kw": "Wechselrichter-Grenze AC (0 = keine)"
         }
       }
     },
@@ -103,26 +118,66 @@
   },
   "entity": {
     "sensor": {
-      "energy_today": { "name": "Ertrag heute" },
-      "energy_tomorrow": { "name": "Ertrag morgen" },
-      "energy_remaining_today": { "name": "Ertrag Rest heute" },
-      "energy_day_after_tomorrow": { "name": "Ertrag übermorgen" },
-      "power_now": { "name": "Leistung jetzt" },
-      "power_next_hour": { "name": "Leistung nächste Stunde" },
-      "peak_power_today": { "name": "Spitzenleistung heute" },
-      "peak_time_today": { "name": "Spitzenzeit heute" },
-      "peak_power_tomorrow": { "name": "Spitzenleistung morgen" },
-      "typical_day_energy": { "name": "Normaler Tag (Kataster)" },
-      "forecast_vs_typical": { "name": "Prognose zu normalem Tag" },
-      "run": { "name": "Prognoselauf" },
-      "requests_today": { "name": "Abfragen heute" },
-      "bytes_today": { "name": "Gelesene Daten heute" },
-      "plane_energy_today": { "name": "{plane} Ertrag heute" },
-      "plane_energy_tomorrow": { "name": "{plane} Ertrag morgen" },
-      "plane_power_now": { "name": "{plane} Leistung jetzt" },
-      "plane_peak_power_today": { "name": "{plane} Spitzenleistung heute" },
-      "plane_typical_day_energy": { "name": "{plane} normaler Tag" },
-      "plane_forecast_vs_typical": { "name": "{plane} Prognose zu normalem Tag" }
+      "energy_today": {
+        "name": "Ertrag heute"
+      },
+      "energy_tomorrow": {
+        "name": "Ertrag morgen"
+      },
+      "energy_remaining_today": {
+        "name": "Ertrag Rest heute"
+      },
+      "energy_day_after_tomorrow": {
+        "name": "Ertrag übermorgen"
+      },
+      "power_now": {
+        "name": "Leistung jetzt"
+      },
+      "power_next_hour": {
+        "name": "Leistung nächste Stunde"
+      },
+      "peak_power_today": {
+        "name": "Spitzenleistung heute"
+      },
+      "peak_time_today": {
+        "name": "Spitzenzeit heute"
+      },
+      "peak_power_tomorrow": {
+        "name": "Spitzenleistung morgen"
+      },
+      "typical_day_energy": {
+        "name": "Normaler Tag (Kataster)"
+      },
+      "forecast_vs_typical": {
+        "name": "Prognose zu normalem Tag"
+      },
+      "run": {
+        "name": "Prognoselauf"
+      },
+      "requests_today": {
+        "name": "Abfragen heute"
+      },
+      "bytes_today": {
+        "name": "Gelesene Daten heute"
+      },
+      "plane_energy_today": {
+        "name": "{plane} Ertrag heute"
+      },
+      "plane_energy_tomorrow": {
+        "name": "{plane} Ertrag morgen"
+      },
+      "plane_power_now": {
+        "name": "{plane} Leistung jetzt"
+      },
+      "plane_peak_power_today": {
+        "name": "{plane} Spitzenleistung heute"
+      },
+      "plane_typical_day_energy": {
+        "name": "{plane} normaler Tag"
+      },
+      "plane_forecast_vs_typical": {
+        "name": "{plane} Prognose zu normalem Tag"
+      }
     }
   },
   "issues": {

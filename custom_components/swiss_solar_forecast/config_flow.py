@@ -7,6 +7,7 @@ Reconfigure moves the plant or changes its planes."""
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 import voluptuous as vol
@@ -19,11 +20,11 @@ from .const import (
     CONF_ADDRESS,
     CONF_AZIMUTH,
     CONF_DAMPING,
-    CONF_INVERTER_KW,
     CONF_KWP,
     CONF_LOSSES,
     CONF_PLANE_LABEL,
     CONF_PLANES,
+    CONF_PLANT_INVERTER_KW,
     CONF_PLANT_NAME,
     CONF_POINT_HEIGHT,
     CONF_POINT_ID,
@@ -52,8 +53,9 @@ CONF_LOCATION = "location"
 CONF_SEARCH = "search"
 CONF_ROOFS = "roofs"
 CONF_PLANE = "plane"
+PLANT = "plant"
 MANUAL = "manual"
-PLANE_KEYS = (CONF_KWP, CONF_AZIMUTH, CONF_TILT, CONF_LOSSES, CONF_INVERTER_KW, CONF_DAMPING)
+PLANE_KEYS = (CONF_KWP, CONF_AZIMUTH, CONF_TILT, CONF_LOSSES, CONF_DAMPING)
 ROOF_KEYS = (CONF_ROOF_ID, CONF_ROOF_AREA, CONF_ROOF_CLASS, CONF_ROOF_IRRADIATION, CONF_ROOF_MONTHLY)
 
 _COMPASS = ("N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW")
@@ -94,15 +96,20 @@ def plane_schema(current: dict[str, Any] | None = None, with_label: bool = True)
             vol.Required(CONF_LOSSES, default=cur.get(CONF_LOSSES, DEFAULT_LOSSES)): selector.NumberSelector(
                 selector.NumberSelectorConfig(min=0, max=50, step=0.5, unit_of_measurement="%", mode=selector.NumberSelectorMode.BOX)
             ),
-            vol.Required(CONF_INVERTER_KW, default=cur.get(CONF_INVERTER_KW, 0.0)): selector.NumberSelector(
-                selector.NumberSelectorConfig(min=0, max=1000, step=0.01, unit_of_measurement="kW", mode=selector.NumberSelectorMode.BOX)
-            ),
             vol.Required(CONF_DAMPING, default=cur.get(CONF_DAMPING, DEFAULT_DAMPING)): selector.NumberSelector(
                 selector.NumberSelectorConfig(min=0.2, max=2.0, step=0.01, mode=selector.NumberSelectorMode.BOX)
             ),
         }
     )
     return fields
+
+
+def _inverter_selector() -> selector.NumberSelector:
+    return selector.NumberSelector(selector.NumberSelectorConfig(min=0, max=10000, step=0.01, unit_of_measurement="kW", mode=selector.NumberSelectorMode.BOX))
+
+
+def _slug(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-") or "plant"
 
 
 def _plane_values(user_input: dict[str, Any]) -> dict[str, float]:
@@ -133,6 +140,7 @@ class SwissSolarForecastConfigFlow(ConfigFlow, domain=DOMAIN):
         self._queue: list[Roof | None] = []  # the planes still to be entered; None = by hand
         self._planes: list[dict[str, Any]] = []
         self._name: str = "Solar"
+        self._plant_inverter_kw: float = 0.0
         self._entry: ConfigEntry | None = None
 
     @staticmethod
@@ -153,6 +161,8 @@ class SwissSolarForecastConfigFlow(ConfigFlow, domain=DOMAIN):
             fields[vol.Required(CONF_PLANT_NAME, default=self._name)] = selector.TextSelector()
         fields[vol.Required(CONF_LOCATION, default={"latitude": lat, "longitude": lon})] = selector.LocationSelector()
         fields[vol.Optional(CONF_SEARCH, default="")] = selector.TextSelector()
+        if with_name:
+            fields[vol.Required(CONF_PLANT_INVERTER_KW, default=self._plant_inverter_kw)] = _inverter_selector()
         return vol.Schema(fields)
 
     async def _async_place_submitted(self, user_input: dict[str, Any], prefix: str) -> tuple[ConfigFlowResult | None, dict[str, str]]:
@@ -300,10 +310,11 @@ class SwissSolarForecastConfigFlow(ConfigFlow, domain=DOMAIN):
             CONF_POINT_HEIGHT: point.height,
             CONF_ADDRESS: self._address,
             CONF_PLANT_NAME: self._name,
+            CONF_PLANT_INVERTER_KW: self._plant_inverter_kw,
             CONF_PLANES: self._planes,
         }
-        # one plant per place: the coordinates, to about ten metres
-        unique_id = f"{self._lat:.4f},{self._lon:.4f}"
+        # one entry per inverter: the place (to about ten metres) and the plant's name
+        unique_id = f"{self._lat:.4f},{self._lon:.4f}:{_slug(self._name)}"
         await self.async_set_unique_id(unique_id)
         if self._entry is None:
             self._abort_if_unique_id_configured()
@@ -315,7 +326,7 @@ class SwissSolarForecastConfigFlow(ConfigFlow, domain=DOMAIN):
             self._entry,
             unique_id=unique_id,
             data={**self._entry.data, **place},
-            options={k: v for k, v in self._entry.options.items() if k != CONF_PLANES},
+            options={k: v for k, v in self._entry.options.items() if k not in (CONF_PLANES, CONF_PLANT_INVERTER_KW)},
         )
         return self.async_abort(reason="reconfigure_successful")
 
@@ -325,6 +336,7 @@ class SwissSolarForecastConfigFlow(ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
         if user_input is not None:
             self._name = str(user_input.get(CONF_PLANT_NAME) or "Solar").strip() or "Solar"
+            self._plant_inverter_kw = float(user_input.get(CONF_PLANT_INVERTER_KW) or 0.0)
             result, errors = await self._async_place_submitted(user_input, "")
             if result is not None:
                 return result
@@ -346,6 +358,7 @@ class SwissSolarForecastConfigFlow(ConfigFlow, domain=DOMAIN):
         """Another place, or other planes: marker or address, the roofs there, the figures of every plane."""
         self._entry = self._get_reconfigure_entry()
         self._name = self._entry.data.get(CONF_PLANT_NAME) or self._entry.title
+        self._plant_inverter_kw = float(self._entry.options.get(CONF_PLANT_INVERTER_KW, self._entry.data.get(CONF_PLANT_INVERTER_KW, 0.0)) or 0.0)
         errors: dict[str, str] = {}
         if user_input is not None:
             result, errors = await self._async_place_submitted(user_input, "reconfigure_")
@@ -378,17 +391,24 @@ class SwissSolarForecastOptionsFlow(OptionsFlow):
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         planes = self._planes()
-        if len(planes) <= 1:
-            self._index = 0
-            return await self.async_step_plane()
         if user_input is not None:
+            if user_input[CONF_PLANE] == PLANT:
+                return await self.async_step_plant()
             self._index = int(user_input[CONF_PLANE])
             return await self.async_step_plane()
-        options = [selector.SelectOptionDict(value=str(i), label=f"{p.get(CONF_PLANE_LABEL) or i + 1} · {p.get(CONF_KWP, 0):g} kWp") for i, p in enumerate(planes)]
+        options = [selector.SelectOptionDict(value=PLANT, label="Σ")]
+        options += [selector.SelectOptionDict(value=str(i), label=f"{p.get(CONF_PLANE_LABEL) or i + 1} · {p.get(CONF_KWP, 0):g} kWp") for i, p in enumerate(planes)]
         schema = vol.Schema(
-            {vol.Required(CONF_PLANE, default="0"): selector.SelectSelector(selector.SelectSelectorConfig(options=options, mode=selector.SelectSelectorMode.LIST))}
+            {vol.Required(CONF_PLANE, default="0" if planes else PLANT): selector.SelectSelector(selector.SelectSelectorConfig(options=options, mode=selector.SelectSelectorMode.LIST))}
         )
         return self.async_show_form(step_id="init", data_schema=schema)
+
+    async def async_step_plant(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        entry = self.config_entry
+        if user_input is not None:
+            return self.async_create_entry(title="", data={**entry.options, CONF_PLANT_INVERTER_KW: float(user_input.get(CONF_PLANT_INVERTER_KW) or 0.0)})
+        current = float(entry.options.get(CONF_PLANT_INVERTER_KW, entry.data.get(CONF_PLANT_INVERTER_KW, 0.0)) or 0.0)
+        return self.async_show_form(step_id="plant", data_schema=vol.Schema({vol.Required(CONF_PLANT_INVERTER_KW, default=current): _inverter_selector()}))
 
     async def async_step_plane(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         planes = self._planes()

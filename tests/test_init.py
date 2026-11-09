@@ -89,6 +89,21 @@ async def test_single_plane_has_no_plane_sensors(hass: HomeAssistant, enable_cus
     assert hass.states.get("sensor.swiss_solar_forecast_1234_typical_day_energy") is None
 
 
+@freeze_time(datetime(2026, 6, 21, 10, 15, tzinfo=UTC))
+async def test_plant_inverter_limit_clips_the_sum(hass: HomeAssistant, enable_custom_integrations, fake_forecast) -> None:
+    entry = MockConfigEntry(domain=DOMAIN, unique_id="47.3769,8.5417", title="Our roof", data={**ENTRY_DATA, "plant_inverter_kw": 5.0}, entry_id="solar1234")
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    peak = hass.states.get("sensor.swiss_solar_forecast_1234_peak_power_today")
+    assert float(peak.state) == 5000
+    south = hass.states.get("sensor.swiss_solar_forecast_1234_plane1_energy_today")
+    today = hass.states.get("sensor.swiss_solar_forecast_1234_energy_today")
+    assert float(today.state) < float(south.state) + 20  # the clipped plant sum is well below the free sum
+    hourly = today.attributes["hourly"]
+    assert max(hourly.values()) == 5000
+
+
 async def test_unreachable_is_retried(hass: HomeAssistant, enable_custom_integrations) -> None:
     entry = _entry()
     entry.add_to_hass(hass)

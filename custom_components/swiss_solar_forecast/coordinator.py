@@ -28,6 +28,7 @@ from .const import (
     CONF_LOSSES,
     CONF_PLANE_LABEL,
     CONF_PLANES,
+    CONF_PLANT_INVERTER_KW,
     CONF_POINT_ID,
     CONF_POINT_LAT,
     CONF_POINT_LON,
@@ -187,8 +188,13 @@ class ForecastSnapshot:
     last_bytes: int = 0
 
 
-def _sum_hours(per_plane: list[list[HourForecast]]) -> list[HourForecast]:
-    """The plant's hours: the planes' values added per hour start."""
+def plant_inverter_kw(entry: ConfigEntry) -> float:
+    return _f(entry.options.get(CONF_PLANT_INVERTER_KW, entry.data.get(CONF_PLANT_INVERTER_KW)), 0.0)
+
+
+def _sum_hours(per_plane: list[list[HourForecast]], limit_kw: float = 0.0) -> list[HourForecast]:
+    """The plant's hours: the planes' values added per hour start, clipped
+    at the plant's inverter limit when one is set."""
     by_start: dict[datetime, list[HourForecast]] = {}
     for hours in per_plane:
         for h in hours:
@@ -204,7 +210,7 @@ def _sum_hours(per_plane: list[list[HourForecast]]) -> list[HourForecast]:
                 dhi=first.dhi,
                 temperature=first.temperature,
                 poa=sum(h.poa for h in items) / len(items),
-                power_kw=sum(h.power_kw for h in items),
+                power_kw=min(sum(h.power_kw for h in items), limit_kw) if limit_kw > 0 else sum(h.power_kw for h in items),
             )
         )
     return out
@@ -220,6 +226,7 @@ class SolarForecastCoordinator(DataUpdateCoordinator[ForecastSnapshot]):
         self.lat = float(entry.data[CONF_POINT_LAT])
         self.lon = float(entry.data[CONF_POINT_LON])
         self.planes = planes_from_entry(entry)
+        self.inverter_kw = plant_inverter_kw(entry)
         self._snapshot = ForecastSnapshot()
         self._series: dict[str, list[tuple[datetime, float | None]]] = {}
         self._warned_run: datetime | None = None
@@ -270,7 +277,7 @@ class SolarForecastCoordinator(DataUpdateCoordinator[ForecastSnapshot]):
         rows = [(ts, value, dhi.get(ts), temp.get(ts)) for ts, value in sorted(ghi.items())]
         per_plane = [forecast_hours(rows, self.lat, self.lon, p.plane) for p in self.planes]
         snap.planes = [Series(hours) for hours in per_plane]
-        snap.plant = Series(_sum_hours(per_plane))
+        snap.plant = Series(_sum_hours(per_plane, self.inverter_kw))
         snap.diffuse_forecast = bool(dhi)
 
     async def _async_fetch(self) -> ForecastSnapshot:
