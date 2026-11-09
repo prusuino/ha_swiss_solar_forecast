@@ -156,6 +156,12 @@ class PlantSensor(_Base):
         if self._key == "bytes_today":
             return snap.bytes_today
         day0, day1, day2 = self._days()
+        if self._key == "forecast_vs_typical":
+            # like against like: only the planes with a cadastre roof have an expectation
+            typical = self.coordinator.typical_day_wh(day0)
+            today = [series.day_energy_wh(day0) for p, series in zip(self.coordinator.planes, snap.planes) if p.has_roof]
+            today = [t for t in today if t is not None]
+            return round(sum(today) / typical * 100) if typical and today else None
         return _value(self._key, snap.plant, self.coordinator.typical_day_wh, day0, day1, day2, dt_util.utcnow())
 
     @property
