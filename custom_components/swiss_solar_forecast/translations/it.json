@@ -110,11 +110,13 @@
         "data": {
           "plant_inverter_kw": "Limite AC dell'inverter (0 = nessuno)",
           "terrain_horizon": "Orizzonte del terreno (montagne e fianchi della valle)",
+          "snow": "Neve sui moduli",
           "yield_sensor": "Contatore di produzione per l'autocalibrazione (facoltativo)"
         },
         "data_description": {
           "terrain_horizon": "Legge una volta l'orizzonte del luogo dal modello altimetrico di swisstopo. Finché il sole si trova dietro una montagna o un fianco della valle, conta solo la luce diffusa. Solo terreno nudo: alberi ed edifici non sono nel modello.",
-          "yield_sensor": "Un sensore di energia che conta ciò che produce l'intero impianto (contatore totale o giornaliero, Wh, kWh o MWh). Ogni ora la previsione viene confrontata con la produzione contata e si apprende un fattore per ogni ora del giorno: ombreggiamento da alberi o edifici, neve, sporco. Lasciate vuoto per disattivare l'autocalibrazione; un altro contatore o valori modificati di una falda fanno ricominciare l'apprendimento."
+          "snow": "Segue la neve a partire dalla previsione: le precipitazioni che cadono come neve coprono i moduli, che non producono nulla finché non è scivolata via o si è sciolta. I moduli ripidi si liberano prima di quelli piani. Una stima; con un contatore di produzione, i moduli che producono benché la previsione li mostri coperti vengono liberati subito.",
+          "yield_sensor": "Un sensore di energia che conta ciò che produce l'intero impianto (contatore totale o giornaliero, Wh, kWh o MWh). Ogni ora la previsione viene confrontata con la produzione contata e si apprende un fattore per ogni ora del giorno: ombreggiamento da alberi o edifici, sporco, tutto ciò che il modello non conosce. Le ore con neve sui moduli vengono tralasciate. Con il contatore vedete anche quanto è stata precisa la previsione negli ultimi 7 e 30 giorni. Lasciate vuoto per disattivare l'autocalibrazione; un altro contatore o valori modificati di una falda fanno ricominciare l'apprendimento."
         }
       }
     },
@@ -157,6 +159,9 @@
       "forecast_vs_typical": {
         "name": "Previsione vs giornata tipo"
       },
+      "snow_cover": {
+        "name": "Neve sui moduli"
+      },
       "run": {
         "name": "Run di previsione"
       },
@@ -171,6 +176,12 @@
       },
       "calibration_factor": {
         "name": "Fattore di calibrazione"
+      },
+      "accuracy_7_days": {
+        "name": "Precisione della previsione 7 giorni"
+      },
+      "accuracy_30_days": {
+        "name": "Precisione della previsione 30 giorni"
       },
       "plane_energy_today": {
         "name": "{plane} energia oggi"

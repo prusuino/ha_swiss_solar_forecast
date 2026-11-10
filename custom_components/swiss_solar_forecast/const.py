@@ -35,6 +35,7 @@ CONF_PLANES = "planes"  # list of plane dicts (the keys below), one per roof pla
 CONF_PLANT_INVERTER_KW = "plant_inverter_kw"  # AC limit of the plant as a whole, kW; 0 = none
 CONF_HORIZON = "terrain_horizon"  # whether the terrain horizon (swisstopo elevation model) blocks the direct beam
 CONF_YIELD_SENSOR = "yield_sensor"  # entity id of the plant's energy meter, for the self-calibration; empty = none
+CONF_SNOW = "snow"  # whether snow on the modules is modelled from precipitation and temperature
 CONF_PLANE_LABEL = "label"  # short name of the plane, e.g. "SW 230°" or the user's text
 CONF_KWP = "kwp"  # installed DC peak power of the plane, kWp
 CONF_AZIMUTH = "azimuth"  # compass bearing the modules face, degrees: 0 north, 90 east, 180 south, 270 west
@@ -66,14 +67,31 @@ POINT_TYPE_MOUNTAIN = 3
 PARAM_GLOBAL = "gre000h0"  # global radiation on the horizontal, W/m², hourly mean
 PARAM_DIFFUSE = "ods000h0"  # diffuse radiation, W/m², hourly mean
 PARAM_TEMPERATURE = "tre200h0"  # air temperature 2 m, °C, hourly mean
-HOURLY_PARAMS = (PARAM_GLOBAL, PARAM_DIFFUSE, PARAM_TEMPERATURE)
+PARAM_PRECIPITATION = "rre150h0"  # precipitation, mm, hourly total
+PARAM_WIND = "fu3010h0"  # wind speed 10 m above ground, km/h, hourly mean
+HOURLY_PARAMS = (PARAM_GLOBAL, PARAM_DIFFUSE, PARAM_TEMPERATURE, PARAM_PRECIPITATION, PARAM_WIND)
 PROBE_PARAM = "jp2000d0"  # a small daily file: one HEAD request tells whether a run exists
 
 # Files whose rows are grouped by timestamp rather than by point (measured
 # on the published files; the layout is detected on every read anyway).
 DATE_MAJOR_PARAMS = frozenset({"tre200h0"})
 
+# One point out of a file grouped by timestamp costs a read in every one of
+# its 200 blocks, some 2.3 MB, where a file grouped by point costs 40 KB. The
+# temperature forecast changes little from one hourly run to the next, so its
+# series is kept and read again only when it is this many hours old.
+KEPT_PARAMS = frozenset({PARAM_TEMPERATURE})
+KEPT_PARAM_HOURS = 6
+
 # --- Model constants ---------------------------------------------------------
 ALBEDO = 0.2  # ground reflection used for the reflected share
-NOCT = 45.0  # nominal operating cell temperature, °C
+ALBEDO_SNOW = 0.6  # the same with snow on the ground
+SOLAR_CONSTANT = 1361.0  # W/m² outside the atmosphere
 TEMPERATURE_COEFFICIENT = -0.004  # power change per kelvin of cell temperature above 25 °C
+# Cell temperature after Faiman: air temperature + irradiance / (U0 + U1 · wind at the modules)
+FAIMAN_U0 = 25.0  # W/m²/K
+FAIMAN_U1 = 6.84  # W/m²/K per m/s
+WIND_AT_MODULES = 0.5  # share of the forecast wind (10 m above open ground) that reaches a roof's modules
+WIND_DEFAULT = 1.0  # m/s at the modules when no wind is forecast (the old NOCT convention)
+# Reflection at the glass after Martin & Ruiz: the loss grows as the light falls in flatter
+INCIDENCE_AR = 0.16

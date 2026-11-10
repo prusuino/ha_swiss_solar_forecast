@@ -110,11 +110,13 @@
         "data": {
           "plant_inverter_kw": "Limite AC de l'onduleur (0 = aucune)",
           "terrain_horizon": "Horizon du terrain (montagnes et flancs de vallée)",
+          "snow": "Neige sur les modules",
           "yield_sensor": "Compteur de production pour l'auto-calibration (facultatif)"
         },
         "data_description": {
           "terrain_horizon": "Lit une fois l'horizon du lieu dans le modèle altimétrique de swisstopo. Tant que le soleil se trouve derrière une montagne ou un flanc de vallée, seule la lumière diffuse compte. Terrain nu uniquement : arbres et bâtiments ne figurent pas dans le modèle.",
-          "yield_sensor": "Un capteur d'énergie qui compte ce que produit toute l'installation (compteur total ou journalier, Wh, kWh ou MWh). Chaque heure, la prévision est comparée à la production comptée et un facteur par heure de la journée est appris : ombrage par des arbres ou des bâtiments, neige, salissure. Laissez vide pour désactiver l'auto-calibration ; un autre compteur ou des valeurs modifiées d'un pan font recommencer l'apprentissage."
+          "snow": "Suit la neige à partir de la prévision : les précipitations qui tombent en neige recouvrent les modules, et ils ne produisent rien tant qu'elle n'a pas glissé ou fondu. Les modules raides se dégagent plus vite que les modules plats. Une estimation ; avec un compteur de production, les modules qui produisent alors que la prévision les montre couverts sont aussitôt dégagés.",
+          "yield_sensor": "Un capteur d'énergie qui compte ce que produit toute l'installation (compteur total ou journalier, Wh, kWh ou MWh). Chaque heure, la prévision est comparée à la production comptée et un facteur par heure de la journée est appris : ombrage par des arbres ou des bâtiments, salissure, tout ce que le modèle ne connaît pas. Les heures avec de la neige sur les modules sont laissées de côté. Avec le compteur, vous voyez aussi la précision de la prévision sur les 7 et 30 derniers jours. Laissez vide pour désactiver l'auto-calibration ; un autre compteur ou des valeurs modifiées d'un pan font recommencer l'apprentissage."
         }
       }
     },
@@ -157,6 +159,9 @@
       "forecast_vs_typical": {
         "name": "Prévision vs journée type"
       },
+      "snow_cover": {
+        "name": "Neige sur les modules"
+      },
       "run": {
         "name": "Run de prévision"
       },
@@ -171,6 +176,12 @@
       },
       "calibration_factor": {
         "name": "Facteur de calibration"
+      },
+      "accuracy_7_days": {
+        "name": "Précision de la prévision 7 jours"
+      },
+      "accuracy_30_days": {
+        "name": "Précision de la prévision 30 jours"
       },
       "plane_energy_today": {
         "name": "{plane} énergie aujourd'hui"

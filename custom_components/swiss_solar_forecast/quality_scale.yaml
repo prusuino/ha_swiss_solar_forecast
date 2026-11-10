@@ -5,7 +5,7 @@ rules:
     comment: The integration registers no actions.
   appropriate-polling:
     status: done
-    comment: A HEAD request every 15 minutes finds a new model run; the three parameter files are read only then, with range requests.
+    comment: A HEAD request every 15 minutes finds a new model run; the parameter files are read only then, with range requests, and the one costly file (temperature) every six hours only.
   brands: done
   common-modules:
     status: done

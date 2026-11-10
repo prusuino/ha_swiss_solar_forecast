@@ -1,7 +1,8 @@
 """Sensors of the plant (the planes' sum) and of every plane: energy of
 today, tomorrow and the rest of today, power now and next hour, today's
-peak, the cadastre's typical day, and diagnostics about the run, the
-traffic, the terrain horizon and the self-calibration."""
+peak, the cadastre's typical day, the snow on the modules, and diagnostics
+about the run, the traffic, the terrain horizon, the self-calibration and
+how accurate the forecast was."""
 from __future__ import annotations
 
 from calendar import monthrange
@@ -22,6 +23,7 @@ from .const import ATTRIBUTION, DOMAIN
 from .coordinator import ForecastSnapshot, PlaneConfig, Series, SolarForecastCoordinator
 from .device import device_info, entry_suffix
 from .horizon import ATTRIBUTION_TERRAIN
+from .snow import COVER_SHOWN
 from .sonnendach import ATTRIBUTION_SONNENDACH
 
 # key: (device class, unit, state class, enabled by default, entity category)
@@ -41,12 +43,15 @@ _META: dict[str, tuple[SensorDeviceClass | None, str | None, SensorStateClass | 
     "run": (SensorDeviceClass.TIMESTAMP, None, None, False, EntityCategory.DIAGNOSTIC),
     "requests_today": (None, None, SensorStateClass.TOTAL, False, EntityCategory.DIAGNOSTIC),
     "bytes_today": (SensorDeviceClass.DATA_SIZE, "B", SensorStateClass.TOTAL, False, EntityCategory.DIAGNOSTIC),
-    # only with the terrain horizon switched on / with a yield meter set
+    # only with the snow model / the terrain horizon switched on / with a yield meter set
+    "snow_cover": (None, "%", SensorStateClass.MEASUREMENT, True, None),
     "terrain_horizon": (None, "°", SensorStateClass.MEASUREMENT, True, EntityCategory.DIAGNOSTIC),
     "calibration_factor": (None, None, SensorStateClass.MEASUREMENT, True, EntityCategory.DIAGNOSTIC),
+    "accuracy_7_days": (None, "%", SensorStateClass.MEASUREMENT, True, EntityCategory.DIAGNOSTIC),
+    "accuracy_30_days": (None, "%", SensorStateClass.MEASUREMENT, True, EntityCategory.DIAGNOSTIC),
 }
 _ROOF_KEYS = ("typical_day_energy", "forecast_vs_typical")
-_DIAGNOSTIC_KEYS = ("run", "requests_today", "bytes_today", "terrain_horizon", "calibration_factor")
+_ACCURACY_DAYS = {"accuracy_7_days": 7, "accuracy_30_days": 30}
 # per plane: the figures worth a sensor of their own (the rest is in the plant's attributes)
 _PLANE_KEYS = ("energy_today", "energy_tomorrow", "power_now", "peak_power_today", "typical_day_energy", "forecast_vs_typical")
 _PLANE_ENABLED = ("energy_today", "power_now")
@@ -56,7 +61,13 @@ _TICK = timedelta(minutes=5)  # the time-dependent values (now, remaining) move 
 async def async_setup_entry(hass: HomeAssistant, entry: SolarForecastConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
     coordinator = entry.runtime_data
     any_roof = any(p.has_roof for p in coordinator.planes)
-    optional = {"terrain_horizon": coordinator.use_horizon, "calibration_factor": coordinator.calibration is not None}
+    optional = {
+        "snow_cover": coordinator.use_snow,
+        "terrain_horizon": coordinator.use_horizon,
+        "calibration_factor": coordinator.calibration is not None,
+        "accuracy_7_days": coordinator.accuracy is not None,
+        "accuracy_30_days": coordinator.accuracy is not None,
+    }
     registry = er.async_get(hass)
     for key, wanted in optional.items():
         # switched off in the options: the sensor goes, it would only stand there unavailable
@@ -152,6 +163,10 @@ class _Base(CoordinatorEntity[SolarForecastCoordinator], SensorEntity):
             self._attr_suggested_display_precision = 1
         elif key == "calibration_factor":
             self._attr_suggested_display_precision = 2
+        elif key in _ACCURACY_DAYS:
+            self._attr_suggested_display_precision = 1
+        elif key == "snow_cover":
+            self._attr_suggested_display_precision = 0
 
     @property
     def available(self) -> bool:
@@ -181,6 +196,12 @@ class PlantSensor(_Base):
             calibration = self.coordinator.calibration
             return None if calibration is None else round(calibration.overall, 3)
         day0, day1, day2 = self._days()
+        if self._key in _ACCURACY_DAYS:
+            accuracy = self.coordinator.accuracy
+            return None if accuracy is None else accuracy.figures(day0, _ACCURACY_DAYS[self._key])["day_ahead_accuracy"]
+        if self._key == "snow_cover":
+            hour = snap.plant.hour_at(dt_util.utcnow())
+            return round(hour.snow_cover * 100) if hour and snap.snow_known else None
         if self._key == "forecast_vs_typical":
             # like against like: only the planes with a cadastre roof have an expectation
             typical = self.coordinator.typical_day_wh(day0)
@@ -228,8 +249,36 @@ class PlantSensor(_Base):
                 "yield_sensor": self.coordinator.yield_sensor,
                 "energy_today_uncalibrated": _kwh(snap.raw_plant.day_energy_wh(day0)),
             }
+        if self._key in _ACCURACY_DAYS:
+            accuracy = self.coordinator.accuracy
+            if accuracy is None:
+                return None
+            figures = accuracy.figures(self._days()[0], _ACCURACY_DAYS[self._key])
+            del figures["day_ahead_accuracy"]  # the state
+            return figures
+        if self._key == "snow_cover":
+            now = dt_util.utcnow()
+            hour = snap.plant.hour_at(now)
+            if hour is None or not snap.snow_known:
+                return None
+            day0 = self._days()[0]
+            ground = snap.ground_snow.get(hour.start)
+            covers = {p.label: series.hour_at(now) for p, series in zip(self.coordinator.planes, snap.planes)}
+            # when the modules are expected to be free again: the first hour without snow on them
+            free = next((h.start for h in snap.plant.hours if h.start > hour.start and h.snow_cover < COVER_SHOWN), None)
+            return {
+                "planes": {label: round(h.snow_cover * 100) for label, h in covers.items() if h is not None},
+                "ground_snow_mm": None if ground is None else round(ground, 1),
+                "snow_free_from": free.isoformat() if free and hour.snow_cover >= COVER_SHOWN else None,
+                "energy_lost_today": _kwh(sum(h.snow_loss_kw * 1000.0 for h in snap.plant.hours if dt_util.as_local(h.start).date() == day0)),
+            }
         if self._key == "run":
-            return {"fetched": snap.fetched.isoformat() if snap.fetched else None, "missing": snap.missing}
+            return {
+                "fetched": snap.fetched.isoformat() if snap.fetched else None,
+                "missing": snap.missing,
+                "requests": snap.last_requests,
+                "bytes": snap.last_bytes,
+            }
         if self._key == "typical_day_energy":
             day0, day1, _day2 = self._days()
             typical = self.coordinator.typical_day_wh(day0)

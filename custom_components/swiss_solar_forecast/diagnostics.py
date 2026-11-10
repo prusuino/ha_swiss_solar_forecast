@@ -1,7 +1,8 @@
 """Diagnostics download: the planes, the run, what the reads cost and the
-hourly result, the terrain horizon in brief and what the calibration
-learned, with the place redacted (the horizon's full profile is left out:
-it is a fingerprint of the place)."""
+hourly result, the terrain horizon in brief, the snow as it is followed,
+what the calibration learned and how accurate the forecast was, with the
+place redacted (the horizon's full profile is left out: it is a
+fingerprint of the place)."""
 from __future__ import annotations
 
 from dataclasses import asdict
@@ -9,6 +10,7 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.util import dt as dt_util
 
 from .const import CONF_ADDRESS, CONF_POINT_ID, CONF_POINT_LAT, CONF_POINT_LON, CONF_POINT_NAME, CONF_YIELD_SENSOR, USER_AGENT
 from .coordinator import SolarForecastCoordinator
@@ -55,6 +57,34 @@ def _calibration(coordinator: SolarForecastCoordinator | None) -> dict[str, Any]
     }
 
 
+def _snow(coordinator: SolarForecastCoordinator | None) -> dict[str, Any] | None:
+    if coordinator is None:
+        return None
+    snow = coordinator.snow
+    if snow is None:
+        return {"enabled": coordinator.use_snow}
+    return {
+        "enabled": True,
+        "followed_until": snow.time or None,
+        "ground_mm": snow.ground,
+        "planes": [{"load_mm": load, "cover": cover} for load, cover in snow.planes],
+        "hours_kept": len(snow.history),
+    }
+
+
+def _accuracy(coordinator: SolarForecastCoordinator | None) -> dict[str, Any] | None:
+    accuracy = coordinator.accuracy if coordinator else None
+    if accuracy is None:
+        return None
+    today = dt_util.now().date()
+    return {
+        "7_days": accuracy.figures(today, 7),
+        "30_days": accuracy.figures(today, 30),
+        "days_kept": len(accuracy.days),
+        "open_hours": len(accuracy.pending),
+    }
+
+
 async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]:
     coordinator: SolarForecastCoordinator | None = getattr(entry, "runtime_data", None)
     snap = coordinator.data if coordinator else None
@@ -68,6 +98,8 @@ async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry: ConfigE
         },
         "terrain_horizon": _horizon(coordinator),
         "calibration": _calibration(coordinator),
+        "accuracy": _accuracy(coordinator),
+        "snow": _snow(coordinator),
         "planes": [{"label": p.label, "has_roof": p.has_roof, **asdict(p.plane)} for p in coordinator.planes] if coordinator else None,
         "forecast": {
             "loaded": coordinator is not None,
@@ -75,9 +107,11 @@ async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry: ConfigE
             "run": snap.run.isoformat() if snap and snap.run else None,
             "fetched": snap.fetched.isoformat() if snap and snap.fetched else None,
             "missing": snap.missing if snap else None,
+            "series_runs": {param: run.isoformat() for param, run in sorted(coordinator.series_runs.items())} if coordinator else None,
             "diffuse_from_forecast": snap.diffuse_forecast if snap else None,
             "requests_today": snap.requests_today if snap else None,
             "bytes_today": snap.bytes_today if snap else None,
+            "last_read": {"requests": snap.last_requests, "bytes": snap.last_bytes} if snap else None,
             "hours": [
                 {
                     "start": h.start.isoformat(),
@@ -87,6 +121,9 @@ async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry: ConfigE
                     "poa": round(h.poa, 1),
                     "power_kw": round(h.power_kw, 3),
                     "beam_fraction": round(h.beam_fraction, 2),
+                    "wind": None if h.wind is None else round(h.wind, 1),
+                    "snow_cover": round(h.snow_cover, 2),
+                    "snow_loss_kw": round(h.snow_loss_kw, 3),
                 }
                 for h in (snap.plant.hours if snap else [])
             ],

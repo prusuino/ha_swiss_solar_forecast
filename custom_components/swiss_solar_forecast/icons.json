@@ -16,7 +16,10 @@
       "requests_today": { "default": "mdi:counter" },
       "bytes_today": { "default": "mdi:download-network-outline" },
       "terrain_horizon": { "default": "mdi:image-filter-hdr" },
-      "calibration_factor": { "default": "mdi:tune-variant" }
+      "calibration_factor": { "default": "mdi:tune-variant" },
+      "snow_cover": { "default": "mdi:snowflake" },
+      "accuracy_7_days": { "default": "mdi:bullseye-arrow" },
+      "accuracy_30_days": { "default": "mdi:bullseye-arrow" }
     }
   }
 }

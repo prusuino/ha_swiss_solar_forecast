@@ -38,6 +38,7 @@ from .const import (
     CONF_ROOF_ID,
     CONF_ROOF_IRRADIATION,
     CONF_ROOF_MONTHLY,
+    CONF_SNOW,
     CONF_TILT,
     CONF_YIELD_SENSOR,
     DEFAULT_AZIMUTH,
@@ -173,7 +174,7 @@ class SwissSolarForecastConfigFlow(ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
         loc = user_input[CONF_LOCATION]
         self._lat, self._lon = float(loc["latitude"]), float(loc["longitude"])
-        self._address = ""
+        self._address = self._kept_address()
         search = str(user_input.get(CONF_SEARCH) or "").strip()
         session = async_get_clientsession(self.hass)
         if search:
@@ -190,6 +191,19 @@ class SwissSolarForecastConfigFlow(ConfigFlow, domain=DOMAIN):
                 return await getattr(self, f"async_step_{prefix}address")(), errors
             self._use_address(self._addresses[0])
         return await self._async_load_roofs(prefix), errors
+
+    def _kept_address(self) -> str:
+        """The address of the entry being reconfigured, for as long as the
+        marker stays where it is (to about ten metres). A marker moved
+        elsewhere has no address until one is searched for."""
+        if self._entry is None:
+            return ""
+        data = self._entry.data
+        try:
+            moved = abs(float(data[CONF_POINT_LAT]) - self._lat) > 1e-4 or abs(float(data[CONF_POINT_LON]) - self._lon) > 1e-4
+        except (KeyError, TypeError, ValueError):
+            return ""
+        return "" if moved else str(data.get(CONF_ADDRESS) or "")
 
     def _use_address(self, address: Address) -> None:
         self._address = address.label
@@ -412,6 +426,7 @@ class SwissSolarForecastOptionsFlow(OptionsFlow):
                 **entry.options,
                 CONF_PLANT_INVERTER_KW: float(user_input.get(CONF_PLANT_INVERTER_KW) or 0.0),
                 CONF_HORIZON: bool(user_input.get(CONF_HORIZON, True)),
+                CONF_SNOW: bool(user_input.get(CONF_SNOW, True)),
             }
             # an emptied field means: no meter, no self-calibration
             options.pop(CONF_YIELD_SENSOR, None)
@@ -423,6 +438,7 @@ class SwissSolarForecastOptionsFlow(OptionsFlow):
             {
                 vol.Required(CONF_PLANT_INVERTER_KW, default=current): _inverter_selector(),
                 vol.Required(CONF_HORIZON, default=bool(entry.options.get(CONF_HORIZON, True))): selector.BooleanSelector(),
+                vol.Required(CONF_SNOW, default=bool(entry.options.get(CONF_SNOW, True))): selector.BooleanSelector(),
                 vol.Optional(CONF_YIELD_SENSOR, description={"suggested_value": entry.options.get(CONF_YIELD_SENSOR)}): selector.EntitySelector(
                     selector.EntitySelectorConfig(domain="sensor", device_class="energy")
                 ),

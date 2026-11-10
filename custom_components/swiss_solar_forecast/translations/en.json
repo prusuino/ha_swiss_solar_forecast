@@ -110,11 +110,13 @@
         "data": {
           "plant_inverter_kw": "Inverter AC limit (0 = none)",
           "terrain_horizon": "Terrain horizon (mountains and valley sides)",
+          "snow": "Snow on the modules",
           "yield_sensor": "Yield meter for the self-calibration (optional)"
         },
         "data_description": {
           "terrain_horizon": "Reads the horizon of the place once from the swisstopo elevation model. While the sun stands behind a mountain or a valley side, only the diffuse light counts. Bare terrain only: trees and buildings are not in the model.",
-          "yield_sensor": "An energy sensor that counts what the whole plant produces (total or daily counter, Wh, kWh or MWh). Every hour the forecast is compared with what was counted, and a factor per hour of the day is learned: shading by trees or buildings, snow, soiling. Leave empty to switch the self-calibration off; another meter or changed figures of a plane start the learning anew."
+          "snow": "Follows the snow from the forecast: precipitation that falls as snow covers the modules, and they produce nothing until it has slid off or melted. Steep modules clear sooner than flat ones. An estimate; with a yield meter, modules that produce although the forecast shows them covered are set free at once.",
+          "yield_sensor": "An energy sensor that counts what the whole plant produces (total or daily counter, Wh, kWh or MWh). Every hour the forecast is compared with what was counted, and a factor per hour of the day is learned: shading by trees or buildings, soiling, whatever the model does not know. Hours with snow on the modules are left out. With the meter you also see how accurate the forecast was over the last 7 and 30 days. Leave empty to switch the self-calibration off; another meter or changed figures of a plane start the learning anew."
         }
       }
     },
@@ -157,6 +159,9 @@
       "forecast_vs_typical": {
         "name": "Forecast vs typical day"
       },
+      "snow_cover": {
+        "name": "Snow on the modules"
+      },
       "run": {
         "name": "Forecast run"
       },
@@ -171,6 +176,12 @@
       },
       "calibration_factor": {
         "name": "Calibration factor"
+      },
+      "accuracy_7_days": {
+        "name": "Forecast accuracy 7 days"
+      },
+      "accuracy_30_days": {
+        "name": "Forecast accuracy 30 days"
       },
       "plane_energy_today": {
         "name": "{plane} energy today"

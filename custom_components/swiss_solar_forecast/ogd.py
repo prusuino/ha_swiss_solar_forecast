@@ -7,8 +7,11 @@ One kind of file is read, the local forecast: one CSV per parameter and model ru
   grouped by point in most files (a binary search finds the block in some
   25 small requests, about 40 KB in all) and by timestamp in a few (the
   point's row sits at a fixed position inside every block, so the position
-  of the first block predicts all the others). Both layouts are stable per
-  parameter; the layout is detected on every read anyway.
+  of the first block predicts all the others — but every one of the 200
+  blocks needs a read of its own, some 2.3 MB in all, which is why the
+  coordinator keeps such a series for hours instead of reading it with
+  every run). Both layouts are stable per parameter; the layout is detected
+  on every read anyway.
 
 The run of a forecast file is part of its name, so the newest run is found
 by probing the current hour and the hours before it with HEAD requests —

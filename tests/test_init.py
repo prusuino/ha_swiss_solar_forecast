@@ -1,10 +1,11 @@
 """Setup with a faked run: the plant's and the planes' sensors, the
 cadastre yardstick, the energy dashboard hook, the repair notice when the
-data cannot be read, unloading, the terrain horizon and the
-self-calibration against a yield meter."""
+data cannot be read, unloading, the terrain horizon, the
+self-calibration against a yield meter, the snow on the modules and the
+forecast's accuracy."""
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
 from freezegun import freeze_time
@@ -14,13 +15,14 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import issue_registry as ir
 from pytest_homeassistant_custom_component.common import MockConfigEntry, async_fire_time_changed
 
-from custom_components.swiss_solar_forecast.const import DOMAIN
+from custom_components.swiss_solar_forecast.const import DOMAIN, HOURLY_PARAMS
+from custom_components.swiss_solar_forecast.coordinator import stretched
 from custom_components.swiss_solar_forecast.diagnostics import async_get_config_entry_diagnostics
 from custom_components.swiss_solar_forecast.energy import async_get_solar_forecast
 from custom_components.swiss_solar_forecast.horizon import HorizonError
 from custom_components.swiss_solar_forecast.ogd import OgdUnavailable
 
-from .conftest import horizon_reply
+from .conftest import WINTER_RUN, horizon_reply, snow_run
 
 SHARES = {str(m): s for m, s in zip(range(1, 13), (3, 5, 8, 10, 12, 13, 13, 12, 9, 7, 4, 4))}
 PLANES = [
@@ -293,6 +295,11 @@ async def test_no_yield_meter_no_calibration(hass: HomeAssistant, enable_custom_
     assert hass.states.get(PREFIX + "calibration_factor") is None
     assert entry.runtime_data.calibration is None
     assert hass.states.get(PREFIX + "energy_today").attributes["calibrated"] is False
+    # and nothing to measure the forecast against
+    assert hass.states.get(PREFIX + "accuracy_7_days") is None and hass.states.get(PREFIX + "accuracy_30_days") is None
+    assert entry.runtime_data.accuracy is None
+    diagnostics = await async_get_config_entry_diagnostics(hass, entry)
+    assert diagnostics["accuracy"] is None
 
 
 async def test_calibration_stays_under_the_inverter_limit(hass: HomeAssistant, enable_custom_integrations, fake_forecast, freezer) -> None:
@@ -311,3 +318,274 @@ async def test_calibration_stays_under_the_inverter_limit(hass: HomeAssistant, e
     assert coordinator.calibration.factor(11) > 1.2
     assert coordinator.data.plant.hour_at(noon).power_kw == 3.0
     assert coordinator.data.raw_plant.hour_at(noon).power_kw == 3.0
+
+
+WINTER = datetime(2026, 1, 15, 8, 15, tzinfo=UTC)
+FETCH = "custom_components.swiss_solar_forecast.coordinator.async_fetch_forecast"
+
+
+@freeze_time(NOW)
+async def test_snow_is_unknown_without_a_precipitation_forecast(hass: HomeAssistant, enable_custom_integrations, fake_forecast) -> None:
+    entry = _entry()
+    await _setup(hass, entry)
+    snow = hass.states.get(PREFIX + "snow_cover")
+    assert snow is not None and snow.state == "unknown"
+    hour = entry.runtime_data.data.plant.hour_at(NOW)
+    assert hour.snow_cover == 0.0 and hour.snow_loss_kw == 0.0
+
+
+@freeze_time(WINTER)
+async def test_snow_on_the_modules(hass: HomeAssistant, enable_custom_integrations, snow_forecast, memory_store) -> None:
+    await hass.config.async_set_time_zone("Europe/Zurich")
+    # without the snow model: the plain forecast, and no sensor
+    await _setup(hass, _entry(options={"snow": False}))
+    assert hass.states.get(PREFIX + "snow_cover") is None
+    free = float(hass.states.get(PREFIX + "energy_today").state)
+    assert free > 10
+    await hass.config_entries.async_remove("solar1234")
+    await hass.async_block_till_done()
+
+    # six millimetres fell in the night; at a quarter past nine the first sun is on the modules
+    entry = _entry()
+    await _setup(hass, entry)
+    snow = hass.states.get(PREFIX + "snow_cover")
+    assert 90 <= int(snow.state) <= 100
+    assert set(snow.attributes["planes"]) == {"South", "East"} and min(snow.attributes["planes"].values()) >= 90
+    assert snow.attributes["ground_snow_mm"] == 6.0
+    assert snow.attributes["snow_free_from"] > "2026-01-15T09"  # some hour later, when it has slid off and melted
+    lost = snow.attributes["energy_lost_today"]
+    today = hass.states.get(PREFIX + "energy_today")
+    assert float(today.state) < 0.8 * free and lost > 0.2 * free
+    # what the snow takes and what is left make the free plant's day (a little more: the white ground reflects)
+    assert free - 0.05 < float(today.state) + lost < 1.15 * free
+    plant = entry.runtime_data.data.plant
+    night = plant.hour_at(datetime(2026, 1, 15, 3, 30, tzinfo=UTC))
+    assert night.snow_cover > 0.5 and night.power_kw == 0.0 and night.snow_loss_kw == 0.0
+    # the third day is mild: nothing is left on the modules
+    assert plant.hour_at(datetime(2026, 1, 17, 11, 30, tzinfo=UTC)).snow_cover == 0.0
+    assert plant.hour_at(datetime(2026, 1, 17, 11, 30, tzinfo=UTC)).snow_loss_kw == 0.0
+    assert plant.hour_at(datetime(2026, 1, 15, 9, 30, tzinfo=UTC)).wind == 2.0  # 7.2 km/h
+
+    diagnostics = await async_get_config_entry_diagnostics(hass, entry)
+    assert diagnostics["snow"] == {
+        "enabled": True,
+        "followed_until": "2026-01-15T08:00:00+00:00",
+        "ground_mm": 6.0,
+        "planes": [{"load_mm": 6.0, "cover": 1.0}, {"load_mm": 6.0, "cover": 1.0}],
+        "hours_kept": 8,
+    }
+
+    # kept over a restart: the next run no longer knows of the snowfall, the snow is still there
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+    kept = memory_store[STORE_KEY]["data"]["snow"]
+    assert kept["time"] == "2026-01-15T08:00:00+00:00" and kept["planes"] == [[6.0, 1.0], [6.0, 1.0]]
+    with patch(FETCH, return_value=snow_run(snowfall_hours=0)):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done(wait_background_tasks=True)
+    again = hass.states.get(PREFIX + "snow_cover")
+    assert again.state == snow.state and again.attributes["ground_snow_mm"] == 6.0
+
+    # switched off in the options: the plain forecast again, the sensor goes, nothing is kept
+    hass.config_entries.async_update_entry(entry, options={"snow": False})
+    await hass.async_block_till_done(wait_background_tasks=True)
+    assert hass.states.get(PREFIX + "snow_cover") is None
+    assert er.async_get(hass).async_get(PREFIX + "snow_cover") is None
+    assert abs(float(hass.states.get(PREFIX + "energy_today").state) - free) < 0.01
+    diagnostics = await async_get_config_entry_diagnostics(hass, entry)
+    assert diagnostics["snow"] == {"enabled": False}
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+    assert memory_store[STORE_KEY]["data"]["snow"] is None
+
+
+async def test_the_meter_shows_the_modules_free(hass: HomeAssistant, enable_custom_integrations, snow_forecast, freezer) -> None:
+    freezer.move_to(WINTER)
+    await hass.config.async_set_time_zone("Europe/Zurich")
+    hass.states.async_set("sensor.pv_total", "1000.0", {"unit_of_measurement": "kWh"})
+    entry = _entry(options={"yield_sensor": "sensor.pv_total"})
+    await _setup(hass, entry)
+    coordinator = entry.runtime_data
+    before = float(hass.states.get(PREFIX + "energy_today").state)
+
+    await _full_hour(hass, freezer, datetime(2026, 1, 15, 9, 0, 5, tzinfo=UTC))
+    hour = coordinator.data.plant.hour_at(datetime(2026, 1, 15, 9, 30, tzinfo=UTC))
+    assert hour.snow_cover > 0.5 and hour.snow_loss_kw > hour.power_kw
+    free_wh = (hour.power_kw + hour.snow_loss_kw) * 1000.0
+    # the plant made nearly what free modules would have made: somebody swept them, or the snow slid off early
+    hass.states.async_set("sensor.pv_total", str(1000.0 + 0.9 * free_wh / 1000.0), {"unit_of_measurement": "kWh"})
+    await _full_hour(hass, freezer, datetime(2026, 1, 15, 10, 0, 5, tzinfo=UTC))
+
+    snow = hass.states.get(PREFIX + "snow_cover")
+    assert snow.state == "0" and snow.attributes["snow_free_from"] is None
+    assert snow.attributes["ground_snow_mm"] > 5  # the ground keeps its snow
+    assert coordinator.snow.planes == [[0.0, 0.0], [0.0, 0.0]]
+    assert float(hass.states.get(PREFIX + "energy_today").state) > before
+    # the hour that is over stays as it was forecast
+    assert abs(coordinator.data.plant.hour_at(datetime(2026, 1, 15, 9, 30, tzinfo=UTC)).snow_cover - hour.snow_cover) < 0.001
+    # an hour under snow teaches the calibration nothing, but it counts for the accuracy
+    assert coordinator.calibration.samples == 0
+    assert coordinator.accuracy.days["2026-01-15"][3] == 1
+
+
+async def test_a_plant_under_snow_stays_under_snow(hass: HomeAssistant, enable_custom_integrations, snow_forecast, freezer) -> None:
+    freezer.move_to(WINTER)
+    hass.states.async_set("sensor.pv_total", "1000.0", {"unit_of_measurement": "kWh"})
+    entry = _entry(options={"yield_sensor": "sensor.pv_total"})
+    await _setup(hass, entry)
+    coordinator = entry.runtime_data
+    await _full_hour(hass, freezer, datetime(2026, 1, 15, 9, 0, 5, tzinfo=UTC))
+    hour = coordinator.data.plant.hour_at(datetime(2026, 1, 15, 9, 30, tzinfo=UTC))
+    # the meter counts about what the forecast said under snow
+    hass.states.async_set("sensor.pv_total", str(1000.0 + hour.energy_wh / 1000.0), {"unit_of_measurement": "kWh"})
+    await _full_hour(hass, freezer, datetime(2026, 1, 15, 10, 0, 5, tzinfo=UTC))
+    assert coordinator.snow.covered and int(hass.states.get(PREFIX + "snow_cover").state) > 50
+    assert coordinator.calibration.samples == 0
+
+
+async def test_accuracy_against_the_yield_meter(hass: HomeAssistant, enable_custom_integrations, fake_forecast, freezer, memory_store) -> None:
+    freezer.move_to(NOW)
+    await hass.config.async_set_time_zone("Europe/Zurich")
+    hass.states.async_set("sensor.pv_total", "1000.0", {"unit_of_measurement": "kWh"})
+    entry = _entry(options={"yield_sensor": "sensor.pv_total"})
+    await _setup(hass, entry)
+    coordinator = entry.runtime_data
+    week = hass.states.get(PREFIX + "accuracy_7_days")
+    assert week.state == "unknown" and week.attributes["days"] == 0 and week.attributes["same_day_accuracy"] is None
+    assert er.async_get(hass).async_get(PREFIX + "accuracy_30_days").entity_category == "diagnostic"
+
+    # the meter closes an hour: forecast and count go to the day's sums
+    await _full_hour(hass, freezer, datetime(2026, 6, 21, 11, 0, 5, tzinfo=UTC))
+    forecast_wh = coordinator.data.plant.hour_at(datetime(2026, 6, 21, 11, 30, tzinfo=UTC)).energy_wh
+    hass.states.async_set("sensor.pv_total", str(1000.0 + 0.9 * forecast_wh / 1000.0), {"unit_of_measurement": "kWh"})
+    await _full_hour(hass, freezer, datetime(2026, 6, 21, 12, 0, 5, tzinfo=UTC))
+    sums = coordinator.accuracy.days["2026-06-21"]
+    assert sums[3] == 1 and abs(sums[0] - 0.9 * forecast_wh) < 1 and abs(sums[1] - forecast_wh) < 1
+    assert sums[6] == 0  # the hour's forecast of the day before was never seen
+    assert hass.states.get(PREFIX + "accuracy_7_days").state == "unknown"  # the running day does not count
+
+    # a week of full days: 10 % too high the day before, 5 % too high in the end
+    for day in range(14, 21):
+        coordinator.accuracy.days[f"2026-06-{day}"] = [50000.0, 52500.0, 4000.0, 24.0, 50000.0, 55000.0, 24.0]
+    coordinator.async_update_listeners()
+    await hass.async_block_till_done()
+    week = hass.states.get(PREFIX + "accuracy_7_days")
+    assert week.state == "90.0"
+    assert week.attributes["same_day_accuracy"] == 95.0 and week.attributes["hourly_accuracy"] == 92.0
+    assert week.attributes["bias"] == 5.0 and week.attributes["days"] == 7 and week.attributes["days_day_ahead"] == 7
+    assert week.attributes["measured_kwh"] == 350.0 and week.attributes["forecast_kwh"] == 367.5
+    assert "day_ahead_accuracy" not in week.attributes
+    month = hass.states.get(PREFIX + "accuracy_30_days")
+    assert month.state == "90.0" and month.attributes["days"] == 7
+
+    diagnostics = await async_get_config_entry_diagnostics(hass, entry)
+    assert diagnostics["accuracy"]["7_days"]["day_ahead_accuracy"] == 90.0 and diagnostics["accuracy"]["days_kept"] == 8
+    assert diagnostics["accuracy"]["open_hours"] > 24
+
+    # kept over a restart
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+    assert len(memory_store[STORE_KEY]["data"]["accuracy"]["days"]) == 8
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done(wait_background_tasks=True)
+    assert hass.states.get(PREFIX + "accuracy_7_days").state == "90.0"
+
+    # another plane: the old days say nothing about the new plant
+    hass.config_entries.async_update_entry(entry, options={"yield_sensor": "sensor.pv_total", "planes": [{**PLANES[0], "kwp": 12.0}, PLANES[1]]})
+    await hass.async_block_till_done(wait_background_tasks=True)
+    week = hass.states.get(PREFIX + "accuracy_7_days")
+    assert week.state == "unknown" and week.attributes["days"] == 0
+
+    # the meter is taken out: the sensors go, and so does what was kept
+    hass.config_entries.async_update_entry(entry, options={})
+    await hass.async_block_till_done(wait_background_tasks=True)
+    assert hass.states.get(PREFIX + "accuracy_7_days") is None and hass.states.get(PREFIX + "accuracy_30_days") is None
+    assert er.async_get(hass).async_get(PREFIX + "accuracy_7_days") is None
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+    assert memory_store[STORE_KEY]["data"]["accuracy"] is None
+
+
+FIND = "custom_components.swiss_solar_forecast.coordinator.async_find_latest_run"
+
+
+async def test_the_temperature_is_not_read_with_every_run(hass: HomeAssistant, enable_custom_integrations, freezer) -> None:
+    """The temperature file costs many times the others: its series is kept for some hours."""
+    hour = timedelta(hours=1)
+    asked: list[tuple[datetime, tuple[str, ...]]] = []
+    unreadable: set[str] = set()
+
+    async def fetch(session, run, point, params):
+        asked.append((run, params))
+        data = snow_run(run)
+        data.series = {p: s for p, s in data.series.items() if p in params and p not in unreadable}
+        data.missing = [p for p in params if p in unreadable]
+        data.stats.requests, data.stats.bytes = 26 * len(params), 40_000 * len(params)
+        return data
+
+    async def at(run: datetime) -> None:
+        freezer.move_to(run + 4 * hour + timedelta(minutes=15))
+        find.return_value = run
+        await entry.runtime_data.async_refresh()
+        await hass.async_block_till_done()
+
+    freezer.move_to(WINTER)
+    entry = _entry()
+    with patch(FIND, return_value=WINTER_RUN) as find, patch(FETCH, side_effect=fetch):
+        await _setup(hass, entry)
+        coordinator = entry.runtime_data
+        assert asked == [(WINTER_RUN, HOURLY_PARAMS)]
+        assert coordinator.series_runs == {param: WINTER_RUN for param in HOURLY_PARAMS}
+        assert (coordinator.data.last_requests, coordinator.data.last_bytes) == (130, 200_000)
+
+        # the next runs read the four cheap files and go on with the temperature they have
+        for later in (1, 5):
+            await at(WINTER_RUN + later * hour)
+            run, params = asked[-1]
+            assert run == WINTER_RUN + later * hour and params == tuple(p for p in HOURLY_PARAMS if p != "tre200h0")
+            assert coordinator.series_runs["tre200h0"] == WINTER_RUN and coordinator.series_runs["gre000h0"] == run
+            assert coordinator.data.run == run and coordinator.data.missing == []
+            assert coordinator.data.plant.hour_at(dt_now(freezer)).temperature == -3.0
+        diagnostics = await async_get_config_entry_diagnostics(hass, entry)
+        assert diagnostics["forecast"]["series_runs"]["tre200h0"] == "2026-01-15T04:00:00+00:00"
+        assert diagnostics["forecast"]["series_runs"]["gre000h0"] == "2026-01-15T09:00:00+00:00"
+        # what the last read cost stays visible, whatever was asked in between
+        assert diagnostics["forecast"]["last_read"] == {"requests": 104, "bytes": 160_000}
+        assert diagnostics["forecast"]["requests_today"] > 130 + 2 * 104
+
+        # after six hours it is read again
+        await at(WINTER_RUN + 6 * hour)
+        assert asked[-1] == (WINTER_RUN + 6 * hour, HOURLY_PARAMS)
+        assert coordinator.series_runs["tre200h0"] == WINTER_RUN + 6 * hour
+
+        # a temperature file that cannot be read: the kept series serves on, for as long as a forecast counts
+        unreadable.add("tre200h0")
+        await at(WINTER_RUN + 12 * hour)
+        assert asked[-1][1] == HOURLY_PARAMS
+        assert coordinator.series_runs["tre200h0"] == WINTER_RUN + 6 * hour and coordinator.data.missing == []
+        assert coordinator.data.plant.hour_at(dt_now(freezer)).temperature == -3.0
+        await at(WINTER_RUN + 19 * hour)
+        assert asked[-1][1] == HOURLY_PARAMS
+        assert "tre200h0" not in coordinator.series_runs and coordinator.data.missing == ["tre200h0"]
+        assert coordinator.data.plant.hour_at(dt_now(freezer)).temperature is None
+
+        # readable again
+        unreadable.clear()
+        await at(WINTER_RUN + 20 * hour)
+        assert coordinator.series_runs["tre200h0"] == WINTER_RUN + 20 * hour and coordinator.data.missing == []
+
+
+def dt_now(freezer) -> datetime:
+    return freezer().replace(tzinfo=UTC)
+
+
+def test_a_kept_series_is_stretched_to_the_end_of_the_new_run() -> None:
+    first = datetime(2026, 1, 15, 1, 0, tzinfo=UTC)
+    kept = [(first + timedelta(hours=i), float(i % 24)) for i in range(48)]
+    wanted = [first + timedelta(hours=i) for i in range(3, 51)]
+    out = dict(stretched(kept, wanted))
+    assert len(out) == 51 and all(out[ts] == value for ts, value in kept)
+    # the three hours the kept series lacks repeat the day before
+    assert [out[first + timedelta(hours=i)] for i in (48, 49, 50)] == [0.0, 1.0, 2.0]
+    # nothing to repeat, nothing made up
+    assert stretched([(first, None)], [first + timedelta(days=1)]) == [(first, None)]

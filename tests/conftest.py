@@ -36,6 +36,38 @@ def clear_sky_run(run: datetime = RUN, days: int = 3) -> ForecastData:
     return data
 
 
+WINTER_RUN = datetime(2026, 1, 15, 4, 0, tzinfo=UTC)
+
+
+def snow_run(run: datetime = WINTER_RUN, days: int = 3, snowfall_hours: int = 6) -> ForecastData:
+    """A winter forecast: six hours of snowfall in the first night, then
+    two clear days at -3 °C and a third at +5 °C, with a light wind."""
+    data = ForecastData(run=run, point=(800100, 2))
+    series: dict[str, list] = {"gre000h0": [], "ods000h0": [], "tre200h0": [], "rre150h0": [], "fu3010h0": []}
+    start = run.replace(hour=0)
+    for i in range(24 * days):
+        ts = start + timedelta(hours=i + 1)
+        hour_mid = (ts - timedelta(minutes=30)).hour + 0.5
+        value = round(max(0.0, 300.0 * (1 - ((hour_mid - 11.5) / 4.0) ** 2)), 1)
+        series["gre000h0"].append((ts, value))
+        series["ods000h0"].append((ts, round(value / 3, 1)))
+        series["tre200h0"].append((ts, -3.0 if i < 48 else 5.0))
+        series["rre150h0"].append((ts, 1.0 if i < snowfall_hours else 0.0))
+        series["fu3010h0"].append((ts, 7.2))
+    data.series = series
+    return data
+
+
+@pytest.fixture
+def snow_forecast():
+    """The coordinator finds the winter run and reads its five series."""
+    with (
+        patch("custom_components.swiss_solar_forecast.coordinator.async_find_latest_run", return_value=WINTER_RUN),
+        patch("custom_components.swiss_solar_forecast.coordinator.async_fetch_forecast", return_value=snow_run()),
+    ):
+        yield
+
+
 @pytest.fixture
 def fake_points():
     with patch("custom_components.swiss_solar_forecast.config_flow.async_fetch_points", return_value=POINTS):

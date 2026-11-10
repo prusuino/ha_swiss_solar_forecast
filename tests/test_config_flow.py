@@ -194,6 +194,37 @@ async def test_reconfigure_keeps_known_planes_and_adds_one(hass: HomeAssistant, 
     assert CONF_PLANES not in entry.options
 
 
+async def _reconfigure_at(hass: HomeAssistant, entry: MockConfigEntry, location: dict, search: str = "") -> None:
+    with patch("custom_components.swiss_solar_forecast.async_setup_entry", return_value=True):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": config_entries.SOURCE_RECONFIGURE, "entry_id": entry.entry_id}
+        )
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], {"location": location, "search": search})
+        if result["step_id"] == "reconfigure_address":
+            result = await hass.config_entries.flow.async_configure(result["flow_id"], {"search": ADDRESSES[1].label})
+        assert result["step_id"] == "reconfigure_roofs"
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], {"roofs": ["5001"]})
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], {"label": "South-east", "kwp": 8.0, "azimuth": 140, "tilt": 23, **FIGURES})
+    assert result["reason"] == "reconfigure_successful"
+
+
+async def test_reconfigure_keeps_the_address_while_the_marker_stays(hass: HomeAssistant, enable_custom_integrations, fake_geo) -> None:
+    """Changing the planes alone leaves the address the place was found
+    with; a marker moved elsewhere drops it, a new search replaces it."""
+    entry = _entry()
+    entry.add_to_hass(hass)
+    hass.config_entries.async_update_entry(entry, data={**entry.data, CONF_ADDRESS: "Musterweg 1 8001 Zürich"})
+    await _reconfigure_at(hass, entry, {"latitude": 47.37, "longitude": 8.54})
+    assert entry.data[CONF_ADDRESS] == "Musterweg 1 8001 Zürich"
+    assert entry.unique_id == "47.3700,8.5400:our-roof"
+    await _reconfigure_at(hass, entry, {"latitude": 47.37, "longitude": 8.54}, search="Musterweg 1 Zürich")
+    assert entry.data[CONF_ADDRESS] == "Musterweg 1a 8001 Zürich"
+    assert entry.unique_id == "47.3770,8.5418:our-roof"
+    await _reconfigure_at(hass, entry, {"latitude": 47.39, "longitude": 8.52})
+    assert entry.data[CONF_ADDRESS] == ""
+    assert entry.unique_id == "47.3900,8.5200:our-roof"
+
+
 async def test_options_terrain_horizon_and_yield_meter(hass: HomeAssistant, enable_custom_integrations) -> None:
     entry = _entry()
     entry.add_to_hass(hass)
@@ -201,15 +232,15 @@ async def test_options_terrain_horizon_and_yield_meter(hass: HomeAssistant, enab
         result = await hass.config_entries.options.async_init(entry.entry_id)
         result = await hass.config_entries.options.async_configure(result["flow_id"], {"plane": "plant"})
         assert result["step_id"] == "plant"
-        assert {"plant_inverter_kw", "terrain_horizon", "yield_sensor"} == {str(k) for k in result["data_schema"].schema}
+        assert {"plant_inverter_kw", "terrain_horizon", "snow", "yield_sensor"} == {str(k) for k in result["data_schema"].schema}
         result = await hass.config_entries.options.async_configure(
-            result["flow_id"], {"plant_inverter_kw": 12.0, "terrain_horizon": False, "yield_sensor": "sensor.pv_total"}
+            result["flow_id"], {"plant_inverter_kw": 12.0, "terrain_horizon": False, "snow": False, "yield_sensor": "sensor.pv_total"}
         )
         assert result["type"] is FlowResultType.CREATE_ENTRY
-        assert entry.options == {"plant_inverter_kw": 12.0, "terrain_horizon": False, "yield_sensor": "sensor.pv_total"}
-        # the meter is taken out again, the horizon is back on by default
+        assert entry.options == {"plant_inverter_kw": 12.0, "terrain_horizon": False, "snow": False, "yield_sensor": "sensor.pv_total"}
+        # the meter is taken out again, the horizon and the snow are switched back on
         result = await hass.config_entries.options.async_init(entry.entry_id)
         result = await hass.config_entries.options.async_configure(result["flow_id"], {"plane": "plant"})
-        result = await hass.config_entries.options.async_configure(result["flow_id"], {"plant_inverter_kw": 12.0, "terrain_horizon": True})
+        result = await hass.config_entries.options.async_configure(result["flow_id"], {"plant_inverter_kw": 12.0, "terrain_horizon": True, "snow": True})
         assert result["type"] is FlowResultType.CREATE_ENTRY
-        assert entry.options == {"plant_inverter_kw": 12.0, "terrain_horizon": True}
+        assert entry.options == {"plant_inverter_kw": 12.0, "terrain_horizon": True, "snow": True}

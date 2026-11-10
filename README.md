@@ -6,22 +6,24 @@
 
 ![Swiss Solar Forecast](readme_header.png)
 
-A Home Assistant custom integration that forecasts the output of your PV plant from the **MeteoSwiss local forecast**: global and diffuse radiation and air temperature, hour by hour for nine days, for every Swiss postal code — official open data, no account, no API key, no limit on the number of calls.
+A Home Assistant custom integration that forecasts the output of your PV plant from the **MeteoSwiss local forecast**: global and diffuse radiation, air temperature, wind and precipitation, hour by hour for nine days, for every Swiss postal code — official open data, no account, no API key, no limit on the number of calls.
 
-> **Open data only.** Everything comes from the files MeteoSwiss publishes under CC BY 4.0 on the federal geodata platform. The integration reads a few hundred kilobytes per model run with range requests instead of the 100 MB the files weigh.
+> **Open data only.** Everything comes from the files MeteoSwiss publishes under CC BY 4.0 on the federal geodata platform. The integration reads only the rows of your place with range requests: about 13 MB a day, where the files of a single model run weigh 160 MB.
 
 ## Highlights
 
 - **Your roof from the solar cadastre**: type your address or drop the marker on the roof, and the planes of that building appear from *Sonnendach*, the Swiss solar cadastre of the Federal Office of Energy — orientation, tilt, area, suitability class and long-term yield. Tick every plane that carries modules, correct what you know better, done. No guessing of azimuths; a plane the cadastre does not know is entered by hand.
-- **The MeteoSwiss forecast, on your roof**: global *and* diffuse radiation from the official model, projected on your module plane (azimuth, tilt), with the cell temperature from the forecast air temperature, your system losses and the inverter limit. No guessed cloud factors.
+- **The MeteoSwiss forecast, on your roof**: global *and* diffuse radiation from the official model, projected on your module plane (azimuth, tilt), with the cell temperature from the forecast air temperature and wind, your system losses and the inverter limit. No guessed cloud factors.
 - **Mountains and valley sides count**: the horizon of your place is read once from the swisstopo elevation model. While the sun stands behind a ridge, the direct beam is left out and only the diffuse light counts — the late sunrise and the early sunset of a valley are in the forecast.
 - **Learns from your own meter**: name the energy sensor of your plant, and the integration compares every hour what was forecast with what was counted. It learns one factor per hour of the day: the tree that shades the roof until ten, the building next door in the evening, soiling, a plant that simply does better than the textbook.
+- **Snow on the modules**: after a snowfall a radiation forecast alone is far too high. The integration follows the snow from the forecast — what falls in the cold covers the modules, steep modules clear sooner than flat ones — and takes the covered share out of the forecast until it has slid off or melted. A sensor shows the cover and when the modules are expected to be free.
+- **Tells you how good it is**: with a meter, two sensors show the accuracy of the forecast over the last 7 and 30 days, measured against what your plant really produced.
 - **Energy dashboard**: the forecast appears as *solar production forecast* in the energy dashboard, like Solcast or Forecast.Solar — without an account or a daily request limit.
 - **Sensors that automations can use**: energy today, tomorrow, the day after and the rest of today; power now and next hour; today's peak and when it comes. Hourly values for nine days as attributes.
 - **Several roofs, one plant**: all planes in one entry, with the plant's totals and a sensor per plane; the energy dashboard gets the sum.
 - **A yardstick**: with a cadastre roof, a sensor shows the long-term expectation of a day in this month and the forecast as a percentage of it — "today 60 % of a normal November day".
 - **Damping by hand**: without a meter, a damping factor per plane scales the result once you have compared a few weeks with your real yield.
-- **Reads sparingly**: one HEAD request every 15 minutes tells whether a new model run exists; only then are three parameter files read, about 300 KB per run, 7 MB a day. A diagnostics sensor shows the traffic.
+- **Reads sparingly**: one HEAD request every 15 minutes tells whether a new model run exists; only then are the parameter files read. Four of them cost about 160 KB together with every hourly run; the temperature file is laid out differently and costs 2.3 MB, so it is read every six hours only and its series is kept in between. That makes about 13 MB a day. Diagnostics sensors show the traffic.
 - **Set up in a minute**: from your Home Assistant location or by typing a place or postal code; German, English, French and Italian; repairs notice when the data cannot be read; diagnostics download with your location redacted.
 
 ## Background
@@ -31,6 +33,8 @@ Since 2025 MeteoSwiss publishes its local forecast as open data: for every posta
 The forecast files are large (one file per parameter and run, all 5800 points of Switzerland). The integration reads only the rows of your point, with HTTP range requests, the way the [Swiss Meteo](https://github.com/prusuino/ha_swiss_meteo) integration does. The two integrations are independent: install either or both.
 
 ## What it provides
+
+![Example dashboard of a demo plant with the energy and power sensors, the two roof planes, the hourly forecast of today and the daily forecast of the next days](docs/dashboard.png)
 
 One device per plant, with these sensors for the plant (the planes' sum):
 
@@ -43,9 +47,11 @@ One device per plant, with these sensors for the plant (the planes' sum):
 | `…_peak_power_today`, `…_peak_time_today` | Today's highest hourly power and the middle of that hour. |
 | `…_peak_power_tomorrow` | Tomorrow's peak (disabled by default). |
 | `…_typical_day_energy`, `…_forecast_vs_typical` | Only with planes chosen from the cadastre: the long-term expectation of a day of this month (attributes: tomorrow, the whole month, the figure per plane) and today's forecast as a percentage of it. |
+| `…_snow_cover` | With the snow model switched on: the share of the modules under snow now, in percent (*unknown* while a run carries no precipitation forecast). Attributes: the cover per plane, the snow on the ground in millimetres of water, the hour from which the modules are expected to be free, and the energy the snow takes today. |
 | `…_terrain_horizon` | Diagnostics, with the terrain horizon switched on: the highest angle under which the terrain is seen, in degrees. Attributes: the direction of that point, the height of the place and the whole profile (direction → angle, north-east over south to north-west). |
 | `…_calibration_factor` | Diagnostics, with a yield meter: the factor learned over all hours (1 = the model fits). Attributes: the factor per hour of the day (local time), the number of hours learned, the last one, and the energy of today without the calibration. |
-| `…_run`, `…_requests_today`, `…_bytes_today` | Diagnostics: the model run in use, and the requests and bytes read since midnight (disabled by default). |
+| `…_accuracy_7_days`, `…_accuracy_30_days` | Diagnostics, with a yield meter: the accuracy of the forecast that stood at the start of each day, over the last 7 and 30 full days, in percent. Attributes: the accuracy of the last forecast before each hour, the hourly accuracy, the bias, the number of days and the energy forecast and measured. |
+| `…_run`, `…_requests_today`, `…_bytes_today` | Diagnostics: the model run in use — with the requests and bytes its read cost as attributes — and the requests and bytes read since midnight (disabled by default). |
 
 A plant with several planes also gets, per plane, `…_plane<n>_energy_today`, `…_plane<n>_power_now` (enabled) and `…_plane<n>_energy_tomorrow`, `…_plane<n>_peak_power_today`, `…_plane<n>_typical_day_energy`, `…_plane<n>_forecast_vs_typical` (disabled by default). The plant's `energy_today` carries the planes' figures as an attribute as well.
 
@@ -53,15 +59,17 @@ The energy values refresh with every model run (hourly) and the time-dependent o
 
 ### The model
 
-For every forecast hour the integration takes the global radiation on the horizontal, the diffuse radiation and the air temperature from the MeteoSwiss local forecast and computes:
+For every forecast hour the integration takes the global radiation on the horizontal, the diffuse radiation, the air temperature, the wind and the precipitation from the MeteoSwiss local forecast and computes:
 
 1. the sun's position in the middle of the hour,
-2. the irradiance on the module plane: the direct beam — only for the share of the hour in which the sun stands above the terrain horizon — projected with the angle between sun and module normal, the diffuse share with the isotropic sky model, the ground reflection with an albedo of 0.2,
-3. the cell temperature (NOCT 45 °C) and the DC power of the plane with a temperature coefficient of −0.4 %/K,
-4. the AC power after your system losses, clipped at the inverter limit when you set one, times the damping factor,
-5. with a yield meter, the factor learned for that hour of the day.
+2. the irradiance on the module plane: the direct beam — only for the share of the hour in which the sun stands above the terrain horizon — projected with the angle between sun and module normal; the diffuse light split into the bright ring around the sun, which comes from the sun's direction, and the rest of the sky, of which a plane sees the part the terrain leaves open (Hay & Davies); the ground reflection with an albedo of 0.2, or 0.6 while snow lies on the ground,
+3. what the module glass reflects of light that falls in flat (Martin & Ruiz),
+4. the cell temperature from the air temperature, the irradiance and the wind (Faiman; half of the forecast wind is taken to reach the modules) and the DC power of the plane with a temperature coefficient of −0.4 %/K,
+5. the share of the modules that is free of snow,
+6. the AC power after your system losses, clipped at the inverter limit when you set one, times the damping factor,
+7. with a yield meter, the factor learned for that hour of the day.
 
-Should a run come without diffuse radiation, the diffuse share is estimated from the clearness index (Erbs). The attribute `diffuse_from_forecast` tells which case applies. The model itself knows the terrain, but no trees, chimneys or neighbouring roofs and no snow cover: that is what the self-calibration learns from your meter. Without a meter, use the damping factor, or set up one entry per differently shaded part.
+Should a run come without diffuse radiation, the diffuse share is estimated from the clearness index (Erbs). The attribute `diffuse_from_forecast` tells which case applies. Without a wind forecast a light breeze is assumed. The model knows the terrain and follows the snow, but it knows no trees, chimneys or neighbouring roofs: that is what the self-calibration learns from your meter. Without a meter, use the damping factor, or set up one entry per differently shaded part.
 
 ## Energy dashboard
 
@@ -118,16 +126,50 @@ Open the ⚙️ of the entry, **Configure → Σ**, and choose under *Yield mete
 - At every full hour the integration reads the meter and compares its increase with what the model had forecast for that hour (before any calibration).
 - It keeps, per hour of the day, a running sum of counted and forecast energy in which older days fade (a memory of about two weeks), and from it a factor for that hour. The forecast of every coming day is multiplied with the factor of each hour and clipped at the inverter limit again.
 - A factor needs evidence: after one day it has hardly moved, after two to three weeks of productive days an hour is trusted fully. Hours without evidence use the factor of the plant as a whole. The factors stay between 0.1 and 1.5.
-- Hours with next to no forecast (night, deep overcast), hours in which the meter did not move or jumped, and gaps in the readings teach nothing.
+- Hours with next to no forecast (night, deep overcast), hours with snow on the modules, hours in which the meter did not move or jumped, and gaps in the readings teach nothing.
 
 The sensor `…_calibration_factor` shows the factor over all hours and, as attributes, the factor per hour of the day, the number of hours learned and the energy of today as the model alone would have it. What was learned is kept across restarts. It starts anew when you pick another meter or change the figures of a plane or the inverter limit, and it is deleted when you remove the meter from the options.
 
 Good to know:
 
 - The meter must count the plant of this entry and nothing else, with a resolution of 0.01 kWh or better. A counter that only moves in steps of 1 kWh teaches nothing useful.
-- The calibration learns *everything* that keeps the yield away from the model: shading, soiling, snow that stays for weeks — and also a plant that is throttled (battery full, export limit). If your plant is regularly curtailed, the factors learn the curtailment.
+- The calibration learns *everything* that keeps the yield away from the model: shading, soiling — and also a plant that is throttled (battery full, export limit). If your plant is regularly curtailed, the factors learn the curtailment.
 - Seasons shift the shadows. The fading memory follows them with a delay of a week or two.
 - With the calibration on, leave the damping factors of the planes alone: a change starts the learning anew.
+
+### Snow on the modules
+
+Switched on by default. A module under snow produces nothing, and the radiation forecast knows nothing of it: the day after a snowfall is often the clearest of the week. The integration therefore follows the snow hour by hour from the forecast itself:
+
+- **What falls.** Precipitation at 0.5 °C and colder counts as snow, at 2 °C and warmer as rain, in between as a mix. One millimetre of water — about a centimetre of fresh snow — covers a module completely.
+- **Sliding.** The snow starts to slide when the modules warm up: with the air temperature and the irradiance on the plane (at −3 °C it takes about 240 W/m²). It then moves down by a share of the module length every hour that grows with the tilt: about 10 % at 30°, 17 % at 60°, nothing on a flat roof.
+- **Melting.** Warm air melts 0.125 mm of water per hour and degree above freezing, the sun adds to it. This is what clears a flat roof.
+- **The ground.** The same is followed for the ground, without the sliding. While snow lies there, more light is reflected onto steep planes.
+- **The forecast.** The power of every plane is reduced by the share of its modules that is covered; the planes of a plant clear at different times.
+
+What was worked out for the hours that are over is kept, across model runs and restarts, so a new run continues where the last one stood. After more than a day without data the snow starts at none.
+
+With a **yield meter** the one error that matters most corrects itself: when the plant delivers most of what free modules would deliver in an hour the forecast shows them at least half covered, the modules are set free at once (somebody swept them, or the snow went earlier than expected). The opposite error — snow the forecast did not see — is not corrected.
+
+The sensor `…_snow_cover` shows the covered share now and, as attributes, the cover per plane, the snow on the ground, the hour from which the modules are expected to be free and the energy the snow takes today.
+
+Good to know:
+
+- All of this is an **estimate**. The thresholds come from the literature (the sliding after Marion et al., the model NREL's SAM uses) and are not fitted to your roof: frameless modules, a snow guard at the eaves or a roof the wind sweeps behave differently. Expect the forecast to be right about *whether* snow lies on the modules more often than about the hour it goes.
+- It follows the forecast, not a measurement: snowfall the forecast missed is missed here too, and so is snow that fell before the integration was set up.
+- To switch it off: the ⚙️ of the entry, **Configure → Σ**.
+
+### Forecast accuracy
+
+With a yield meter two diagnostics sensors tell how well the forecast did, `…_accuracy_7_days` and `…_accuracy_30_days`. Every full hour the meter's increase is set against two forecasts of that hour: the one that stood when the local day began — the one you plan the day with — and the last one made before the hour was over.
+
+- **State: the day-ahead accuracy.** 100 % minus the days' errors (forecast at the start of the day against measured, each day's error counted as a positive number) as a share of the measured energy. A week of days that were each 10 % off gives 90 %; a day that was too high does not cancel one that was too low.
+- `same_day_accuracy`: the same with the last forecast of every hour.
+- `hourly_accuracy`: the same hour by hour, which is stricter — a cloud that came an hour early counts twice here and not at all in the day's sum.
+- `bias`: whether the forecast was too high (+) or too low (−) on the whole, in percent of the measured energy.
+- `days`, `days_day_ahead`, `forecast_kwh`, `measured_kwh`: what the figures stand on.
+
+Only days of which at least 20 hours were counted enter the figures, and the running day never does, so the first value appears after the first full day. The figures compare the forecast as the sensors showed it, calibration and snow included. They are kept across restarts (the last 40 days) and start anew when you pick another meter or change the planes.
 
 ### Damping by hand
 

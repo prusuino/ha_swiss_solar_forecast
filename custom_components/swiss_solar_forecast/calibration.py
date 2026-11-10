@@ -19,13 +19,16 @@ The learning is deliberately cautious:
   that one near 1; only evidence moves it. That caution fades as the
   samples come in: after about two weeks of productive hours the measured
   ratio stands alone.
-* Hours with nearly nothing forecast, a meter standing still (outage,
-  snow on the modules) or a meter running backwards (reset) are skipped.
+* Hours with nearly nothing forecast, a meter standing still (outage) or
+  a meter running backwards (reset) are skipped, and so are the hours in
+  which the forecast itself sees snow on the modules: what the snow takes
+  is no property of the plant to be learned.
 
 Pure arithmetic and plain data, so it can be tested without a clock.
 """
 from __future__ import annotations
 
+from collections.abc import Collection
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
@@ -71,17 +74,30 @@ class Calibration:
 
     # ------------------------------------------------------------- forecast
 
-    def record_forecast(self, hours: list[tuple[datetime, float]], now: datetime) -> None:
+    def record_forecast(self, hours: list[tuple[datetime, float]], now: datetime, skip: Collection[datetime] = ()) -> None:
         """Keep the uncalibrated forecast (hour start, Wh) of the hours not
-        yet over; what was forecast for a finished hour stays as it was."""
+        yet over; what was forecast for a finished hour stays as it was.
+        The hours in `skip` (snow on the modules) are not to be learned."""
         for start, wh in hours:
-            if start + timedelta(hours=1) > now:
+            if start + timedelta(hours=1) <= now:
+                continue
+            if start in skip:
+                self.log.pop(_key(start), None)
+            else:
                 self.log[_key(start)] = round(wh, 1)
         limit = _key(now - LOG_KEEP)
         for key in [k for k in self.log if k < limit]:
             del self.log[key]
 
     # ---------------------------------------------------------------- meter
+
+    def increase(self, hour_end: datetime, reading_wh: float | None) -> float | None:
+        """What the meter counted in the hour that ends at `hour_end`, when
+        its reading of the hour's start is known. Ask before `meter_read`,
+        which replaces the kept reading."""
+        if reading_wh is None or self.reading_wh is None or self.reading_time != _key(hour_end - timedelta(hours=1)):
+            return None
+        return reading_wh - self.reading_wh
 
     def meter_read(self, hour_end: datetime, reading_wh: float | None, min_wh: float, max_wh: float) -> bool:
         """The meter at a full hour. Learns the hour that just ended when the
