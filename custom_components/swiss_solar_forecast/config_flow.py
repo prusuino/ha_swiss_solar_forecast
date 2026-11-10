@@ -1,8 +1,8 @@
 """Config flow: the place (map marker or address), the roof planes from the
 Sonnendach cadastre (tick all that carry modules) or planes entered by
 hand, then the figures of every plane one after the other. One entry is
-one plant with all its planes; the MeteoSwiss forecast point nearest to
-the place is chosen automatically. Configure changes a plane's figures;
+one plant with all its planes; the nearest MeteoSwiss forecast point that
+carries radiation is chosen automatically. Configure changes a plane's figures;
 Reconfigure moves the plant or changes its planes."""
 from __future__ import annotations
 
@@ -47,7 +47,7 @@ from .const import (
     DEFAULT_TILT,
     DOMAIN,
 )
-from .ogd import OgdError, async_fetch_points, nearest
+from .ogd import OgdError, async_fetch_points, nearest_radiation_point
 from .sonnendach import Address, Roof, SonnendachError, async_geocode, async_roofs_at
 
 _LOGGER = logging.getLogger(__name__)
@@ -310,13 +310,13 @@ class SwissSolarForecastConfigFlow(ConfigFlow, domain=DOMAIN):
         return self.async_show_form(step_id=step_id, data_schema=vol.Schema(plane_schema(self._plane_defaults(roof))), description_placeholders=placeholders)
 
     async def _async_finish(self) -> ConfigFlowResult:
-        """The forecast point nearest to the place, then the entry."""
+        """The forecast point with radiation nearest to the place, then the entry."""
         try:
             points = await async_fetch_points(async_get_clientsession(self.hass))
+            point = nearest_radiation_point(points, self._lat, self._lon)
         except OgdError as err:
             _LOGGER.debug("Point list not readable: %s", err)
             return self.async_abort(reason="cannot_connect")
-        _distance, point = nearest(points, self._lat, self._lon, 1)[0]
         place = {
             CONF_POINT_TYPE: point.point_type,
             CONF_POINT_ID: point.point_id,

@@ -14,7 +14,10 @@ from custom_components.swiss_solar_forecast.ogd import ForecastData, Point
 ZURICH = Point(point_type=2, point_id=800100, name="Zürich", postal_code="8001", station_abbr="SMA", height=408.0, lat=47.3769, lon=8.5417)
 BERN = Point(point_type=2, point_id=301100, name="Bern", postal_code="3011", station_abbr="BER", height=542.0, lat=46.9480, lon=7.4474)
 SAENTIS = Point(point_type=3, point_id=90001, name="Säntis", postal_code="", station_abbr="SAE", height=2502.0, lat=47.2494, lon=9.3433)
-POINTS = [ZURICH, BERN, SAENTIS]
+# a measurement station two kilometres from the centre of its postal code
+CHUR = Point(point_type=2, point_id=700000, name="Chur", postal_code="7000", station_abbr="CHU", height=593.0, lat=46.8508, lon=9.5320)
+CHUR_STATION = Point(point_type=1, point_id=118, name="Chur / Station", postal_code="", station_abbr="CHU", height=556.0, lat=46.8704, lon=9.5306)
+POINTS = [ZURICH, BERN, SAENTIS, CHUR, CHUR_STATION]
 
 RUN = datetime(2026, 6, 21, 4, 0, tzinfo=UTC)
 

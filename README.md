@@ -190,8 +190,8 @@ The integration declares **Bronze** on the [Home Assistant integration quality s
 - **Update cadence.** MeteoSwiss publishes a new local forecast run every hour. The integration checks every 15 minutes with one HEAD request and reads the files only when the run has changed.
 - **Horizon.** Nine days hour by hour; the sensors show today, tomorrow and the day after, the attributes everything.
 - **Units.** Energy in kWh, power in W; the hourly values are the mean power of the hour, so a value of 5000 W for the hour starting 12:00 means 5 kWh between 12:00 and 13:00.
-- **Mountains and high places.** The forecast points of MeteoSwiss include mountain spots; pick the one at your altitude if your plant is in the hills.
-- **Known limitations.** The terrain horizon knows no trees and buildings, and the self-calibration needs a meter and a couple of weeks; no snow model, no bifacial or tracker systems; the inverter limit is a hard clip of the hourly mean, so short peaks above the limit inside an hour are not modelled.
+- **Forecast point.** MeteoSwiss publishes the radiation for the centres of the postal codes. The integration takes the one nearest to your plant — not a measurement station or a mountain point that may lie closer, because those come without radiation.
+- **Known limitations.** The terrain horizon knows no trees and buildings, and the self-calibration needs a meter and a couple of weeks; no bifacial or tracker systems; the inverter limit is a hard clip of the hourly mean, so short peaks above the limit inside an hour are not modelled.
 
 ## Troubleshooting
 

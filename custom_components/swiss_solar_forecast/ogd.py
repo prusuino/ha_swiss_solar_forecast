@@ -35,6 +35,7 @@ from .const import (
     DATA_BASE,
     DATE_MAJOR_PARAMS,
     FORECAST_META_POINTS_URL,
+    RADIATION_POINT_TYPE,
     STAC_BASE,
     USER_AGENT,
 )
@@ -143,6 +144,16 @@ def nearest(items, lat: float, lon: float, count: int = 3):
     """The `count` items closest to a location, with their distance in km."""
     ranked = sorted(((distance_km(lat, lon, i.lat, i.lon), i) for i in items), key=lambda x: x[0])
     return ranked[:count]
+
+
+def nearest_radiation_point(points: list[Point], lat: float, lon: float) -> Point:
+    """The closest forecast point that carries radiation. A measurement
+    station or a mountain point may lie closer to a plant than the centre
+    of its postal code, and the list of points names them all alike."""
+    usable = [p for p in points if p.point_type == RADIATION_POINT_TYPE]
+    if not usable:
+        raise OgdError("the forecast point list names no postal-code centre")
+    return nearest(usable, lat, lon, 1)[0][1]
 
 
 # --- Forecast runs -----------------------------------------------------------

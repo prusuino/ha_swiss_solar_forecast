@@ -25,6 +25,9 @@ DOCS_URL = "https://opendatadocs.meteoswiss.ch/e-forecast-data/e4-local-forecast
 
 # --- Config entry keys -------------------------------------------------------
 CONF_POINT_TYPE = "point_type"  # 1 station, 2 postal code centre, 3 mountain point
+# The radiation is published for the postal-code centres only: a station or a
+# mountain point has nothing to compute a yield from.
+RADIATION_POINT_TYPE = 2
 CONF_POINT_ID = "point_id"
 CONF_POINT_NAME = "point_name"
 CONF_POINT_LAT = "point_lat"

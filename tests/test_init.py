@@ -22,7 +22,7 @@ from custom_components.swiss_solar_forecast.energy import async_get_solar_foreca
 from custom_components.swiss_solar_forecast.horizon import HorizonError
 from custom_components.swiss_solar_forecast.ogd import OgdUnavailable
 
-from .conftest import WINTER_RUN, horizon_reply, snow_run
+from .conftest import POINTS, WINTER_RUN, horizon_reply, snow_run
 
 SHARES = {str(m): s for m, s in zip(range(1, 13), (3, 5, 8, 10, 12, 13, 13, 12, 9, 7, 4, 4))}
 PLANES = [
@@ -130,6 +130,48 @@ async def test_unreachable_is_retried(hass: HomeAssistant, enable_custom_integra
         await hass.async_block_till_done()
     assert entry.state is ConfigEntryState.SETUP_RETRY
     assert ir.async_get(hass).async_get_issue(DOMAIN, f"forecast_unreachable_{entry.entry_id}") is None  # one failure is no notice yet
+
+
+POINT_LIST = "custom_components.swiss_solar_forecast.async_fetch_points"
+ON_A_STATION = {**ENTRY_DATA, "point_type": 1, "point_id": 118, "point_name": "Chur / Station", "point_lat": 46.8700, "point_lon": 9.5300, "point_height": 556.0}
+
+
+def _entry_on_a_station() -> MockConfigEntry:
+    return MockConfigEntry(domain=DOMAIN, unique_id="46.8700,9.5300:our-roof", title="Our roof", data=ON_A_STATION, entry_id="solar1234")
+
+
+@freeze_time(datetime(2026, 6, 21, 10, 15, tzinfo=UTC))
+async def test_an_entry_on_a_station_moves_to_a_point_with_radiation(hass: HomeAssistant, enable_custom_integrations, fake_forecast) -> None:
+    """Set up before the point was chosen by its kind: the entry sits on a station and never loaded."""
+    entry = _entry_on_a_station()
+    with patch(POINT_LIST, return_value=POINTS) as point_list:
+        await _setup(hass, entry)
+        assert entry.state is ConfigEntryState.LOADED
+        assert (entry.data["point_type"], entry.data["point_id"], entry.data["point_name"], entry.data["point_height"]) == (2, 700000, "Chur", 593.0)
+        # the place itself stays, and so does everything else
+        assert (entry.data["point_lat"], entry.data["point_lon"]) == (46.8700, 9.5300)
+        assert entry.data["planes"] == PLANES and entry.unique_id == "46.8700,9.5300:our-roof"
+        assert entry.runtime_data.point == (700000, 2)
+        assert hass.states.get(PREFIX + "energy_today") is not None
+        # moved once: a reload asks for no list again
+        assert await hass.config_entries.async_reload(entry.entry_id)
+        await hass.async_block_till_done(wait_background_tasks=True)
+        assert entry.state is ConfigEntryState.LOADED and point_list.call_count == 1
+
+
+async def test_an_entry_on_a_station_waits_for_the_point_list(hass: HomeAssistant, enable_custom_integrations, fake_forecast) -> None:
+    entry = _entry_on_a_station()
+    entry.add_to_hass(hass)
+    with patch(POINT_LIST, side_effect=OgdUnavailable("HTTP 503")):
+        assert not await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+    assert entry.state is ConfigEntryState.SETUP_RETRY and entry.data["point_type"] == 1
+
+
+async def test_a_postal_code_point_asks_for_no_list(hass: HomeAssistant, enable_custom_integrations, fake_forecast) -> None:
+    with patch(POINT_LIST, side_effect=AssertionError("not needed")) as point_list:
+        await _setup(hass, _entry())
+    assert point_list.call_count == 0
 
 
 async def test_energy_forecast_unknown_entry(hass: HomeAssistant) -> None:

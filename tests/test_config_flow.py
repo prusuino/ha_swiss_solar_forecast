@@ -14,6 +14,8 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.swiss_solar_forecast.const import CONF_ADDRESS, CONF_PLANES, CONF_POINT_ID, CONF_POINT_NAME, DOMAIN
 from custom_components.swiss_solar_forecast.sonnendach import Address, Roof
 
+from .conftest import CHUR_STATION, SAENTIS
+
 SHARES = {m: s for m, s in zip(range(1, 13), (3, 5, 8, 10, 12, 13, 13, 12, 9, 7, 4, 4))}
 ROOF_SE = Roof(roof_id=5001, building_id=77, azimuth=130.0, tilt=23.0, area=85.0, suitability=4, suitability_text={"de": "Gut", "en": "Good"}, yield_kwh_year=14500.0, irradiation_kwh_m2_year=1180.0, monthly_share=SHARES)
 ROOF_NE = Roof(roof_id=5002, building_id=77, azimuth=50.0, tilt=23.0, area=60.0, suitability=2, suitability_text={"de": "Mittel", "en": "Mean"}, yield_kwh_year=8000.0, irradiation_kwh_m2_year=900.0, monthly_share=SHARES)
@@ -114,6 +116,39 @@ async def test_nothing_ticked_and_no_cadastre(hass: HomeAssistant, enable_custom
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"][CONF_POINT_NAME] == "Bern"
     assert result["data"][CONF_PLANES][0]["label"] == "S 180° / 30°"
+
+
+@pytest.mark.parametrize(
+    ("place", "name"),
+    [
+        ({"latitude": 46.8700, "longitude": 9.5300}, "Chur"),  # next to a station: the postal-code centre two kilometres away
+        ({"latitude": 47.2490, "longitude": 9.3430}, "Chur"),  # on a summit with a mountain point: the nearest postal code, far as it is
+    ],
+)
+async def test_the_point_is_one_with_radiation(hass: HomeAssistant, enable_custom_integrations, fake_points, place, name) -> None:
+    """Stations and mountain points carry no radiation: never the forecast point, however close."""
+    with patch("custom_components.swiss_solar_forecast.config_flow.async_roofs_at", return_value=[]):
+        result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], {"name": "Field", "location": place, "search": ""})
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], {"roofs": ["manual"]})
+        with patch("custom_components.swiss_solar_forecast.async_setup_entry", return_value=True):
+            result = await hass.config_entries.flow.async_configure(result["flow_id"], {"label": "", "kwp": 10, "azimuth": 180, "tilt": 30, **FIGURES})
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"]["point_type"] == 2 and result["data"][CONF_POINT_NAME] == name
+
+
+async def test_no_postal_code_centre_in_the_list(hass: HomeAssistant, enable_custom_integrations) -> None:
+    with (
+        patch("custom_components.swiss_solar_forecast.config_flow.async_fetch_points", return_value=[CHUR_STATION, SAENTIS]),
+        patch("custom_components.swiss_solar_forecast.config_flow.async_roofs_at", return_value=[]),
+    ):
+        result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"name": "Field", "location": {"latitude": 46.87, "longitude": 9.53}, "search": ""}
+        )
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], {"roofs": ["manual"]})
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], {"label": "", "kwp": 10, "azimuth": 180, "tilt": 30, **FIGURES})
+    assert result["type"] is FlowResultType.ABORT and result["reason"] == "cannot_connect"
 
 
 async def test_address_without_match_shows_error(hass: HomeAssistant, enable_custom_integrations, fake_points) -> None:

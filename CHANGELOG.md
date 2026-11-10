@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.1 — 2026-11-10
+
+- **Fix**: a plant that lies closer to a measurement station or a mountain point than to the centre of its postal code never loaded («has no global radiation for this point», the entry kept retrying). The list of forecast points names stations, mountain points and postal-code centres alike, but only the postal-code centres carry radiation, and the setup took the nearest point of any kind. It now takes the nearest one with radiation, and an entry that sits on a point without it moves over by itself at the next start — nothing to set up again.
+- **Docs**: the README no longer suggests picking a mountain point, and no longer lists the snow model as missing.
+
 ## 0.3.0 — 2026-11-10
 
 - **Snow on the modules.** A covered module produces nothing, however bright the day. The integration now follows the snow from the forecast itself: precipitation that falls in the cold covers the modules (one millimetre of water, about a centimetre of fresh snow, covers them completely), the snow slides off when the modules warm up — the faster the steeper they stand — and melts with warm air and sun. The forecast of every plane is reduced by the share that is covered. New sensor *Snow on the modules* with the cover in percent, the figure per plane, the snow on the ground, the hour from which the modules are expected to be free and the energy the snow takes today. The state is kept from one model run to the next and across restarts. With a yield meter, modules that produce although the forecast shows them covered are set free at once. Switched on by default, also for existing plants; to switch it off use Configure → Σ. The thresholds are taken from the literature and are an estimate.
