@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.4.1 — 2026-11-11
+## 0.4.1 — 2026-11-12
 
 - **Fix: Reconfigure no longer drops the planes entered by hand.** The list of planes showed the roofs of the cadastre only, and of the plant's own planes only those were ticked. A plane entered by hand — a garage, a ground-mounted row — was neither listed nor ticked, so it left the plant without a word when the forms were clicked through, and with a yield meter the calibration then learned against modules that were no longer in the forecast. The list now holds every plane the plant has, the ones entered by hand with their name, peak power and orientation, all of them ticked: leave a tick to keep the plane, remove it to remove the plane. **If you have used Reconfigure on a plant with a plane entered by hand, check that the plane is still there** (the entry's ⚙️ lists the planes) and add it again if not.
 - Reconfigure keeps the order of the planes whatever the order of the ticks, with new planes after the existing ones, so `plane1`, `plane2`, … stay the planes they were. It also keeps the planes when the cadastre does not answer, two planes on the same roof, and a plane's own inverter limit.
