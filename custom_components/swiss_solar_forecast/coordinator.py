@@ -3,18 +3,24 @@ and wind series of the entry's forecast point whenever MeteoSwiss publishes
 a new model run, and turns them into the hourly output of every plane of
 the plant and of the plant as a whole.
 
-Three things refine that output, all optional: the terrain horizon of the
+Four things refine that output, all optional: the terrain horizon of the
 place (read once from the swisstopo elevation model, it blocks the direct
 beam while the sun stands behind a mountain), the snow on the modules
-(followed hour by hour from precipitation, temperature and irradiance) and
-the self-calibration against the plant's own energy meter (a factor per
-hour of the day, learned from what was forecast and what was counted).
-With the meter the coordinator also keeps the record of how well the
-forecast did. All of it lives in a small store of the entry, so a restart
-loses nothing.
+(followed hour by hour from precipitation, temperature and irradiance),
+the radiation a measurement station nearby recorded in the last hour (it
+corrects the hours just ahead) and the self-calibration against the
+plant's own energy meter (a factor per place of the sun in the sky,
+learned from what was forecast and what was counted). With the meter the
+coordinator also keeps the record of how well the forecast did.
+
+An hour that is over stays as it was forecast when it ended: later runs
+leave it alone, and with the meter the day's sum takes what was counted
+in it. All of it lives in a small store of the entry, so a restart loses
+nothing.
 
 It wakes every 15 minutes, asks with one HEAD request whether a new run
-exists and reads the files only then, with range requests. The temperature
+exists and reads the files only then, with range requests. While the sun
+is up the same wake reads the station's small file of the day. The temperature
 file is laid out so that a read costs many times what the others cost; its
 series is kept and read again every few hours only. What a read cost is
 kept for the diagnostics, so the traffic stays visible."""
@@ -23,7 +29,7 @@ from __future__ import annotations
 import logging
 from calendar import monthrange
 from dataclasses import dataclass, field, replace
-from datetime import UTC, date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
@@ -33,6 +39,7 @@ from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
+from . import nowcast
 from .accuracy import Accuracy
 from .calibration import Calibration, energy_wh
 from .const import (
@@ -46,6 +53,7 @@ from .const import (
     CONF_PLANE_LABEL,
     CONF_PLANES,
     CONF_PLANT_INVERTER_KW,
+    CONF_POINT_HEIGHT,
     CONF_POINT_ID,
     CONF_POINT_LAT,
     CONF_POINT_LON,
@@ -53,6 +61,7 @@ from .const import (
     CONF_ROOF_IRRADIATION,
     CONF_ROOF_MONTHLY,
     CONF_SNOW,
+    CONF_STATION,
     CONF_TILT,
     CONF_YIELD_SENSOR,
     DEFAULT_AZIMUTH,
@@ -69,11 +78,21 @@ from .const import (
     PARAM_TEMPERATURE,
     PARAM_WIND,
 )
+from .frozen import Frozen
 from .horizon import Horizon, HorizonError, async_fetch_horizon
 from .issues import IssueReporter
-from .ogd import OgdError, OgdUnavailable, async_catalogue_latest_run, async_fetch_forecast, async_find_latest_run
+from .ogd import (
+    OgdError,
+    OgdUnavailable,
+    async_catalogue_latest_run,
+    async_fetch_forecast,
+    async_fetch_station_radiation,
+    async_fetch_stations,
+    async_find_latest_run,
+    distance_km,
+)
 from .snow import COVER_SHOWN, GROUND_SNOW_MM, SnowState
-from .solar import HourForecast, Plane, forecast_hours, plane_power_kw
+from .solar import HourForecast, Plane, forecast_hours, plane_power_kw, sun_position
 from .sonnendach import typical_day_kwh
 
 _LOGGER = logging.getLogger(__name__)
@@ -86,6 +105,14 @@ _KEPT_PARAM_AGE = timedelta(hours=KEPT_PARAM_HOURS)
 # The terrain is read once; after a failure the next try waits, longer each time.
 _HORIZON_RETRY = timedelta(hours=6)
 _HORIZON_RETRY_MAX = timedelta(days=7)
+# The measurement station is chosen once and looked for again after this long (stations come and go).
+_STATION_CHECK = timedelta(days=30)
+_STATION_RECHECK = timedelta(days=1)  # when a nearer station did not answer while the choice was made
+# After a failure the station is left alone for a while: its file briefly, the choice longer.
+_STATION_RETRY = timedelta(minutes=30)
+_STATION_CHOICE_RETRY = timedelta(hours=6)
+# Hours this far ahead are noted, so that an hour is known as it was forecast when it ended.
+_FROZEN_AHEAD = timedelta(hours=24)
 _SAVE_DELAY = 10  # seconds: several changes in a row are written once
 _HOUR = timedelta(hours=1)
 # The meter against the snow: modules the forecast shows at least half covered
@@ -96,8 +123,28 @@ STORE_VERSION = 1
 
 
 def storage_key(entry_id: str) -> str:
-    """Where an entry keeps its terrain horizon, its snow and what was learned from its meter."""
+    """Where an entry keeps its terrain horizon, its snow, its finished hours, its station and what was learned from its meter."""
     return f"{DOMAIN}.{entry_id}"
+
+
+def _kept_station(data: object) -> dict:
+    """The station chosen earlier, when what was kept makes sense (an empty `abbr`: none in reach)."""
+    if not isinstance(data, dict):
+        return {}
+    try:
+        checked = datetime.fromisoformat(str(data["checked"]))
+        if checked.tzinfo is None:
+            return {}
+        return {
+            "abbr": str(data["abbr"]),
+            "name": str(data.get("name") or ""),
+            "distance_km": float(data.get("distance_km") or 0.0),
+            "height": None if data.get("height") is None else float(data["height"]),
+            "checked": checked.isoformat(),
+            "at": [float(data["at"][0]), float(data["at"][1])],
+        }
+    except (KeyError, IndexError, TypeError, ValueError):
+        return {}
 
 
 @dataclass
@@ -171,9 +218,11 @@ class Series:
     """The hourly output of one plane, or of the plant."""
 
     hours: list[HourForecast] = field(default_factory=list)
+    # finished hours the yield meter counted (hour start -> Wh): in a day's sum they take the forecast's place
+    measured: dict[datetime, float] = field(default_factory=dict)
 
     def day_energy_wh(self, day: date) -> float | None:
-        values = [h.energy_wh for h in self.hours if dt_util.as_local(h.start).date() == day]
+        values = [self.measured.get(h.start, h.energy_wh) for h in self.hours if dt_util.as_local(h.start).date() == day]
         return sum(values) if values else None
 
     def remaining_today_wh(self, now: datetime) -> float | None:
@@ -208,7 +257,7 @@ class Series:
         out: dict[str, float] = {}
         for h in self.hours:
             day = dt_util.as_local(h.start).date().isoformat()
-            out[day] = out.get(day, 0.0) + h.energy_wh
+            out[day] = out.get(day, 0.0) + self.measured.get(h.start, h.energy_wh)
         return {day: round(wh / 1000.0, 2) for day, wh in out.items()}
 
 
@@ -317,6 +366,16 @@ class SolarForecastCoordinator(DataUpdateCoordinator[ForecastSnapshot]):
         self.accuracy: Accuracy | None = None
         self.use_snow = bool(entry.options.get(CONF_SNOW, True))
         self.snow: SnowState | None = None
+        self.use_station = bool(entry.options.get(CONF_STATION, True))
+        try:
+            self.height: float | None = float(entry.data.get(CONF_POINT_HEIGHT))
+        except (TypeError, ValueError):
+            self.height = None
+        self.frozen = Frozen()
+        self._station: dict = {}  # the measurement station chosen for this place
+        self._station_task = None
+        self._station_retry_at: datetime | None = None
+        self._correction: nowcast.Correction | None = None
         self._horizon: Horizon | None = None
         self._horizon_task = None
         self._horizon_retry_at: datetime | None = None
@@ -336,7 +395,7 @@ class SolarForecastCoordinator(DataUpdateCoordinator[ForecastSnapshot]):
     # ---------------------------------------------------------------- store
 
     async def _async_setup(self) -> None:
-        """What was kept for this plant: its terrain horizon, the snow on it and what was learned from its meter."""
+        """What was kept for this plant: its terrain horizon, the snow on it, its finished hours, its station and what was learned from its meter."""
         kept = await self._store.async_load() or {}
         horizon = Horizon.from_dict(kept.get("horizon"))
         if horizon is not None and horizon.matches(self.lat, self.lon):
@@ -345,8 +404,11 @@ class SolarForecastCoordinator(DataUpdateCoordinator[ForecastSnapshot]):
             self.snow = SnowState.from_dict(kept.get("snow"), len(self.planes))
         elif kept.get("snow"):
             self._store.async_delay_save(self._kept, _SAVE_DELAY)
+        self.frozen = Frozen.from_dict(kept.get("frozen"), self._fingerprint())
+        if self.use_station:
+            self._station = _kept_station(kept.get("station"))
         if self.yield_sensor:
-            self.calibration = Calibration.from_dict(kept.get("calibration"), self._fingerprint())
+            self.calibration = Calibration.from_dict(kept.get("calibration"), self._fingerprint(), self.lat, self.lon)
             self.accuracy = Accuracy.from_dict(kept.get("accuracy"), self._fingerprint())
         elif kept.get("calibration") or kept.get("accuracy"):
             # the meter was taken away: what was learned with it goes too
@@ -358,6 +420,8 @@ class SolarForecastCoordinator(DataUpdateCoordinator[ForecastSnapshot]):
             "calibration": self.calibration.as_dict() if self.calibration else None,
             "accuracy": self.accuracy.as_dict() if self.accuracy else None,
             "snow": self.snow.as_dict() if self.snow else None,
+            "frozen": self.frozen.as_dict(),
+            "station": self._station or None,
         }
 
     async def async_save(self) -> None:
@@ -404,6 +468,101 @@ class SolarForecastCoordinator(DataUpdateCoordinator[ForecastSnapshot]):
         self._store.async_delay_save(self._kept, _SAVE_DELAY)
         self._recompute()
 
+    # -------------------------------------------------------------- station
+
+    @property
+    def station(self) -> dict:
+        """The measurement station whose radiation corrects the hours just ahead (empty when none is in reach)."""
+        return self._station if self._station.get("abbr") else {}
+
+    @property
+    def correction(self) -> nowcast.Correction | None:
+        """The correction in force: the station's last hour against the forecast of the same time."""
+        found = self._correction
+        return found if found is not None and found.fresh(dt_util.utcnow()) else None
+
+    def _station_due(self, now: datetime) -> bool:
+        """Whether the station is to be chosen (again): never done, the place moved, or long ago."""
+        kept = self._station
+        if not kept or kept["at"] != [round(self.lat, 3), round(self.lon, 3)]:
+            return True
+        return now - datetime.fromisoformat(kept["checked"]) > _STATION_CHECK
+
+    def _start_station_read(self) -> None:
+        """Ask the station in the background, while the sun is up and there is a forecast to compare with."""
+        if not self.use_station or (self._station_task is not None and not self._station_task.done()) or not self._series.get(PARAM_GLOBAL):
+            return
+        now = dt_util.utcnow()
+        if self._station_retry_at is not None and now < self._station_retry_at:
+            return
+        if self._station and not self._station["abbr"] and not self._station_due(now):
+            return  # no station in reach of this place
+        if sun_position(now, self.lat, self.lon).elevation < nowcast.MIN_ELEVATION:
+            return
+        self._station_task = self.entry.async_create_background_task(self.hass, self._async_read_station(), f"{DOMAIN} station radiation")
+
+    async def _async_read_station(self) -> None:
+        now = dt_util.utcnow()
+        choosing = self._station_due(now)
+        cost = [0, 0]  # requests, bytes
+        try:
+            values = await (self._async_choose_station(cost, now) if choosing else self._async_station_values(cost))
+        except OgdError as err:
+            wait = _STATION_CHOICE_RETRY if choosing else _STATION_RETRY
+            self._station_retry_at = now + wait
+            _LOGGER.debug("Station radiation not read, next try in %s: %s", wait, err)
+            return
+        finally:
+            self._station_task = None
+            self._account(self._snapshot, cost[0], cost[1])
+        self._station_retry_at = None
+        if values is None:
+            return
+        forecast = dict(self._series.get(PARAM_GLOBAL, []))
+        found = nowcast.correction(values, forecast, dt_util.utcnow(), self.lat, self.lon, float(self._station["distance_km"]))
+        if found != self._correction:
+            self._correction = found
+            self._recompute()
+
+    async def _async_station_values(self, cost: list[int]) -> list[tuple[datetime, float]] | None:
+        """What the chosen station measured today; None without a station in reach."""
+        abbr = self._station.get("abbr")
+        if not abbr:
+            return None
+        cost[0] += 1
+        values, nbytes = await async_fetch_station_radiation(async_get_clientsession(self.hass), abbr)
+        cost[1] += nbytes
+        return values
+
+    async def _async_choose_station(self, cost: list[int], now: datetime) -> list[tuple[datetime, float]] | None:
+        """Choose the nearest station that measures radiation and keep the choice; returns what it measured today."""
+        session = async_get_clientsession(self.hass)
+        cost[0] += 1
+        stations, nbytes = await async_fetch_stations(session)
+        cost[1] += nbytes
+        chosen: dict = {"abbr": "", "name": "", "distance_km": 0.0, "height": None}
+        values: list[tuple[datetime, float]] | None = None
+        failed: OgdError | None = None
+        for km, station in nowcast.candidates(stations, self.lat, self.lon, self.height, distance_km):
+            cost[0] += 1
+            try:
+                measured, nbytes = await async_fetch_station_radiation(session, station.abbr)
+            except OgdError as err:
+                failed = err
+                continue
+            cost[1] += nbytes
+            if measured:
+                chosen = {"abbr": station.abbr, "name": station.name, "distance_km": round(km, 1), "height": station.height}
+                values = measured
+                break
+        if values is None and failed is not None:
+            raise failed  # no telling whether a station is in reach: asked again later
+        # a nearer station that did not answer gets its chance again tomorrow
+        checked = now if failed is None else now - _STATION_CHECK + _STATION_RECHECK
+        self._station = {**chosen, "checked": checked.isoformat(), "at": [round(self.lat, 3), round(self.lon, 3)]}
+        self._store.async_delay_save(self._kept, _SAVE_DELAY)
+        return values
+
     # ---------------------------------------------------------- calibration
 
     @callback
@@ -428,13 +587,15 @@ class SolarForecastCoordinator(DataUpdateCoordinator[ForecastSnapshot]):
         counted = calibration.increase(hour_end, reading)
         learned = calibration.meter_read(hour_end, reading, min_wh, max_wh)
         if counted is not None and 0 <= counted <= max_wh:
+            # the day's sum takes what was counted in the hour, in place of what was forecast for it
+            self.frozen.measure(start, counted)
             if self.accuracy is not None:
                 self.accuracy.measured(start, counted, _local_date)
             if self.snow is not None and self._snow_refuted(start, counted, min_wh):
                 # the plant produces: its modules are free, whatever the snow model says
                 self._recompute()  # follows the snow up to this hour first
                 self.snow.clear_modules()
-                learned = True
+            learned = True
         self._store.async_delay_save(self._kept, _SAVE_DELAY)
         if learned:
             self._recompute()
@@ -464,7 +625,12 @@ class SolarForecastCoordinator(DataUpdateCoordinator[ForecastSnapshot]):
             self.issues.failure("forecast_unreachable", {"error": str(err)})
             raise
         self.issues.clear("forecast_unreachable")
+        if self._correction is not None and not self._correction.fresh(dt_util.utcnow()):
+            # the station fell silent or the sun went down: back to the forecast as the run has it
+            self._correction = None
+            self._compute(snap)
         self._start_horizon_read()
+        self._start_station_read()
         return snap
 
     def _account(self, snap: ForecastSnapshot, requests: int, nbytes: int) -> None:
@@ -497,6 +663,8 @@ class SolarForecastCoordinator(DataUpdateCoordinator[ForecastSnapshot]):
         wind = dict(self._series.get(PARAM_WIND, []))  # km/h
         precipitation = dict(self._series.get(PARAM_PRECIPITATION, []))
         rows = [(ts, value, dhi.get(ts), temp.get(ts), None if wind.get(ts) is None else wind[ts] / 3.6) for ts, value in sorted(ghi.items())]
+        # what a station nearby measured in the last hour corrects the hours just ahead
+        rows = nowcast.corrected(rows, self._correction, now)
         horizon = self.horizon.elevation_at if self.horizon is not None else None
         snow = self.snow
         albedo: dict[datetime, float] | None = None
@@ -517,17 +685,16 @@ class SolarForecastCoordinator(DataUpdateCoordinator[ForecastSnapshot]):
             per_plane = [[_under_snow(h, p.plane, covers[h.start][number]) for h in hours] for number, (p, hours) in enumerate(zip(self.planes, per_plane))]
             self._store.async_delay_save(self._kept, _SAVE_DELAY)
         raw_plant = _sum_hours(per_plane, self.inverter_kw, [p.plane.kwp for p in self.planes])
-        snap.raw_plant = Series(raw_plant)
         calibration = self.calibration
         if calibration is not None:
             # what is forecast now is what the meter will be compared with; then the learned factors apply.
             # Hours with snow on the modules are left out: the snow is no property of the plant.
             calibration.record_forecast([(h.start, h.energy_wh) for h in raw_plant], now, skip={h.start for h in raw_plant if h.snow_cover > COVER_SHOWN})
             self._store.async_delay_save(self._kept, _SAVE_DELAY)
-            factors = [calibration.factor(hour) for hour in range(24)]
+            factors = {h.start: calibration.factor_at(h.start) for h in raw_plant}
 
             def scaled(hour: HourForecast, limit_kw: float) -> HourForecast:
-                factor = factors[hour.start.astimezone(UTC).hour]
+                factor = factors.get(hour.start, 1.0)
                 power = hour.power_kw * factor
                 free = (hour.power_kw + hour.snow_loss_kw) * factor
                 if limit_kw > 0:
@@ -541,9 +708,36 @@ class SolarForecastCoordinator(DataUpdateCoordinator[ForecastSnapshot]):
             plant = raw_plant
         if self.accuracy is not None:
             self.accuracy.record([(h.start, h.energy_wh) for h in plant], now, _local_date)
+        per_plane, plant, raw_plant = self._settle(per_plane, plant, raw_plant, now)
+        snap.raw_plant = Series(raw_plant)
         snap.planes = [Series(hours) for hours in per_plane]
-        snap.plant = Series(plant)
+        snap.plant = Series(plant, self.frozen.measured_hours())
         snap.diffuse_forecast = bool(dhi)
+
+    def _settle(
+        self, per_plane: list[list[HourForecast]], plant: list[HourForecast], raw_plant: list[HourForecast], now: datetime
+    ) -> tuple[list[list[HourForecast]], list[HourForecast], list[HourForecast]]:
+        """The hours that are over as they were forecast when they ended, whatever a later run makes of them."""
+        ahead = now + _FROZEN_AHEAD
+        places = [{h.start: index for index, h in enumerate(hours)} for hours in per_plane]
+        per_plane = [list(hours) for hours in per_plane]
+        plant, raw_plant = list(plant), list(raw_plant)
+        for index, (hour, raw) in enumerate(zip(plant, raw_plant)):
+            if hour.start >= ahead:
+                continue
+            found = [place.get(hour.start) for place in places]
+            values = [hour.energy_wh, *(0.0 if at is None else hours[at].energy_wh for at, hours in zip(found, per_plane)), raw.energy_wh]
+            kept = self.frozen.settle(hour.start, values, now)
+            if kept is values:
+                continue
+            plant[index] = replace(hour, power_kw=kept[0] / 1000.0)
+            raw_plant[index] = replace(raw, power_kw=kept[-1] / 1000.0)
+            for number, (at, hours) in enumerate(zip(found, per_plane)):
+                if at is not None:
+                    hours[at] = replace(hours[at], power_kw=kept[number + 1] / 1000.0)
+        self.frozen.prune(now)
+        self._store.async_delay_save(self._kept, _SAVE_DELAY)
+        return per_plane, plant, raw_plant
 
     async def _async_fetch(self) -> ForecastSnapshot:
         session = async_get_clientsession(self.hass)

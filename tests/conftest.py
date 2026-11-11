@@ -1,6 +1,7 @@
-"""Shared fixtures: a forecast run served from memory and a flat terrain
-horizon, so no test touches the MeteoSwiss or the swisstopo servers, and
-a store kept in memory, so none writes to disk."""
+"""Shared fixtures: a forecast run served from memory, a flat terrain
+horizon and no measurement station in reach, so no test touches the
+MeteoSwiss or the swisstopo servers, and a store kept in memory, so none
+writes to disk."""
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
@@ -108,3 +109,14 @@ def fake_horizon():
     """The terrain is flat unless a test sets another `side_effect`."""
     with patch("custom_components.swiss_solar_forecast.coordinator.async_fetch_horizon", side_effect=horizon_reply()) as mock:
         yield mock
+
+
+@pytest.fixture(autouse=True)
+def fake_stations():
+    """No measurement station in reach unless a test sets other return
+    values; yields the mocks of the station list and of a station's file."""
+    with (
+        patch("custom_components.swiss_solar_forecast.coordinator.async_fetch_stations", return_value=([], 150000)) as stations,
+        patch("custom_components.swiss_solar_forecast.coordinator.async_fetch_station_radiation", return_value=([], 2000)) as radiation,
+    ):
+        yield stations, radiation

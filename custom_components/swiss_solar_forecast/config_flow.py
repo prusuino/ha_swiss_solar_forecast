@@ -1,6 +1,7 @@
 """Config flow: the place (map marker or address), the roof planes from the
 Sonnendach cadastre (tick all that carry modules) or planes entered by
-hand, then the figures of every plane one after the other. One entry is
+hand, then the figures of every plane one after the other. The yield meter for
+the self-calibration can be named right at the start. One entry is
 one plant with all its planes; the nearest MeteoSwiss forecast point that
 carries radiation is chosen automatically. Configure changes a plane's figures;
 Reconfigure moves the plant or changes its planes."""
@@ -39,6 +40,7 @@ from .const import (
     CONF_ROOF_IRRADIATION,
     CONF_ROOF_MONTHLY,
     CONF_SNOW,
+    CONF_STATION,
     CONF_TILT,
     CONF_YIELD_SENSOR,
     DEFAULT_AZIMUTH,
@@ -111,6 +113,11 @@ def _inverter_selector() -> selector.NumberSelector:
     return selector.NumberSelector(selector.NumberSelectorConfig(min=0, max=10000, step=0.01, unit_of_measurement="kW", mode=selector.NumberSelectorMode.BOX))
 
 
+def _meter_selector() -> selector.EntitySelector:
+    """The energy sensor that counts what the whole plant produces."""
+    return selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor", device_class="energy"))
+
+
 def _slug(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-") or "plant"
 
@@ -144,6 +151,7 @@ class SwissSolarForecastConfigFlow(ConfigFlow, domain=DOMAIN):
         self._planes: list[dict[str, Any]] = []
         self._name: str = "Solar"
         self._plant_inverter_kw: float = 0.0
+        self._yield_sensor: str = ""
         self._entry: ConfigEntry | None = None
 
     @staticmethod
@@ -166,6 +174,8 @@ class SwissSolarForecastConfigFlow(ConfigFlow, domain=DOMAIN):
         fields[vol.Optional(CONF_SEARCH, default="")] = selector.TextSelector()
         if with_name:
             fields[vol.Required(CONF_PLANT_INVERTER_KW, default=self._plant_inverter_kw)] = _inverter_selector()
+            # optional, and worth asking for at once: with the meter the forecast corrects itself
+            fields[vol.Optional(CONF_YIELD_SENSOR, description={"suggested_value": self._yield_sensor or None})] = _meter_selector()
         return vol.Schema(fields)
 
     async def _async_place_submitted(self, user_input: dict[str, Any], prefix: str) -> tuple[ConfigFlowResult | None, dict[str, str]]:
@@ -334,7 +344,8 @@ class SwissSolarForecastConfigFlow(ConfigFlow, domain=DOMAIN):
         await self.async_set_unique_id(unique_id)
         if self._entry is None:
             self._abort_if_unique_id_configured()
-            return self.async_create_entry(title=self._name, data=place)
+            options = {CONF_YIELD_SENSOR: self._yield_sensor} if self._yield_sensor else {}
+            return self.async_create_entry(title=self._name, data=place, options=options)
         if unique_id != self._entry.unique_id:
             self._abort_if_unique_id_configured()
         # Update only: the entry's update listener reloads it on a change.
@@ -353,6 +364,7 @@ class SwissSolarForecastConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             self._name = str(user_input.get(CONF_PLANT_NAME) or "Solar").strip() or "Solar"
             self._plant_inverter_kw = float(user_input.get(CONF_PLANT_INVERTER_KW) or 0.0)
+            self._yield_sensor = str(user_input.get(CONF_YIELD_SENSOR) or "")
             result, errors = await self._async_place_submitted(user_input, "")
             if result is not None:
                 return result
@@ -427,6 +439,7 @@ class SwissSolarForecastOptionsFlow(OptionsFlow):
                 CONF_PLANT_INVERTER_KW: float(user_input.get(CONF_PLANT_INVERTER_KW) or 0.0),
                 CONF_HORIZON: bool(user_input.get(CONF_HORIZON, True)),
                 CONF_SNOW: bool(user_input.get(CONF_SNOW, True)),
+                CONF_STATION: bool(user_input.get(CONF_STATION, True)),
             }
             # an emptied field means: no meter, no self-calibration
             options.pop(CONF_YIELD_SENSOR, None)
@@ -439,9 +452,8 @@ class SwissSolarForecastOptionsFlow(OptionsFlow):
                 vol.Required(CONF_PLANT_INVERTER_KW, default=current): _inverter_selector(),
                 vol.Required(CONF_HORIZON, default=bool(entry.options.get(CONF_HORIZON, True))): selector.BooleanSelector(),
                 vol.Required(CONF_SNOW, default=bool(entry.options.get(CONF_SNOW, True))): selector.BooleanSelector(),
-                vol.Optional(CONF_YIELD_SENSOR, description={"suggested_value": entry.options.get(CONF_YIELD_SENSOR)}): selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain="sensor", device_class="energy")
-                ),
+                vol.Required(CONF_STATION, default=bool(entry.options.get(CONF_STATION, True))): selector.BooleanSelector(),
+                vol.Optional(CONF_YIELD_SENSOR, description={"suggested_value": entry.options.get(CONF_YIELD_SENSOR)}): _meter_selector(),
             }
         )
         return self.async_show_form(step_id="plant", data_schema=schema)

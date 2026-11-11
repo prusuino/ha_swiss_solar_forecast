@@ -13,6 +13,10 @@ One kind of file is read, the local forecast: one CSV per parameter and model ru
   every run). Both layouts are stable per parameter; the layout is detected
   on every read anyway.
 
+A second, small kind of file serves the short-term correction: what one
+measurement station of the SwissMetNet network recorded today, in steps
+of ten minutes (some 20 KB at the end of the day, read whole).
+
 The run of a forecast file is part of its name, so the newest run is found
 by probing the current hour and the hours before it with HEAD requests —
 no catalogue query is needed. Pure standard library plus aiohttp (which
@@ -32,11 +36,14 @@ import aiohttp
 
 from .const import (
     COLLECTION_FORECAST,
+    COLLECTION_STATIONS,
     DATA_BASE,
     DATE_MAJOR_PARAMS,
     FORECAST_META_POINTS_URL,
+    PARAM_STATION_GLOBAL,
     RADIATION_POINT_TYPE,
     STAC_BASE,
+    STATIONS_META_URL,
     USER_AGENT,
 )
 
@@ -45,6 +52,7 @@ _LOGGER = logging.getLogger(__name__)
 # identity: a compressed transfer would make byte ranges meaningless
 _HEADERS = {"User-Agent": USER_AGENT, "Accept-Encoding": "identity"}
 _TIMEOUT = aiohttp.ClientTimeout(total=60, sock_connect=15)
+_TIMEOUT_STATION = aiohttp.ClientTimeout(total=20, sock_connect=10)  # a small file that is asked for again soon
 _PROBE = 1024  # bytes read per binary-search probe
 _WINDOW = 3 * 1024  # bytes read around a predicted row in a date-major file
 _SMALL_FILE = 300 * 1024  # below this a single read beats any search
@@ -104,9 +112,9 @@ def _parse_csv(body: bytes) -> list[dict[str, str]]:
     return list(csv.DictReader(io.StringIO(text), delimiter=";"))
 
 
-async def _fetch(session: aiohttp.ClientSession, url: str) -> bytes:
+async def _fetch(session: aiohttp.ClientSession, url: str, timeout: aiohttp.ClientTimeout = _TIMEOUT) -> bytes:
     try:
-        async with session.get(url, headers=_HEADERS, timeout=_TIMEOUT) as resp:
+        async with session.get(url, headers=_HEADERS, timeout=timeout) as resp:
             if resp.status != 200:
                 raise OgdUnavailable(f"HTTP {resp.status} for {url.rsplit('/', 1)[-1]}")
             return await resp.read()
@@ -154,6 +162,64 @@ def nearest_radiation_point(points: list[Point], lat: float, lon: float) -> Poin
     if not usable:
         raise OgdError("the forecast point list names no postal-code centre")
     return nearest(usable, lat, lon, 1)[0][1]
+
+
+@dataclass(frozen=True)
+class Station:
+    """One measurement station of the SwissMetNet network."""
+
+    abbr: str
+    name: str
+    height: float | None
+    lat: float
+    lon: float
+
+
+async def async_fetch_stations(session: aiohttp.ClientSession) -> tuple[list[Station], int]:
+    """All measurement stations with their coordinates, and the bytes read (about 150 KB)."""
+    body = await _fetch(session, STATIONS_META_URL)
+    stations: list[Station] = []
+    for row in _parse_csv(body):
+        try:
+            abbr = row["station_abbr"].strip()
+            lat, lon = float(row["station_coordinates_wgs84_lat"]), float(row["station_coordinates_wgs84_lon"])
+        except (KeyError, ValueError, AttributeError):
+            continue
+        if abbr:
+            stations.append(Station(abbr=abbr, name=(row.get("station_name") or "").strip(), height=_float(row.get("station_height_masl")), lat=lat, lon=lon))
+    if not stations:
+        raise OgdError("the station list is empty")
+    return stations, len(body)
+
+
+def station_now_url(abbr: str) -> str:
+    """Today's ten-minute values of one station (the file starts anew at 00:00 UTC)."""
+    abbr = abbr.lower()
+    return f"{DATA_BASE}/{COLLECTION_STATIONS}/{abbr}/ogd-smn_{abbr}_t_now.csv"
+
+
+def parse_station_radiation(body: bytes) -> list[tuple[datetime, float]]:
+    """The global radiation in a station's ten-minute file: (end of the ten
+    minutes in UTC, W/m²), oldest first. A station without a radiation
+    sensor leaves the column empty and yields nothing."""
+    values: list[tuple[datetime, float]] = []
+    for row in _parse_csv(body):
+        value = _float((row.get(PARAM_STATION_GLOBAL) or "").strip())
+        if value is None:
+            continue
+        try:
+            end = datetime.strptime((row.get("reference_timestamp") or "").strip(), "%d.%m.%Y %H:%M").replace(tzinfo=UTC)
+        except ValueError:
+            continue
+        values.append((end, value))
+    values.sort()
+    return values
+
+
+async def async_fetch_station_radiation(session: aiohttp.ClientSession, abbr: str) -> tuple[list[tuple[datetime, float]], int]:
+    """What a station measured today, and the bytes read."""
+    body = await _fetch(session, station_now_url(abbr), _TIMEOUT_STATION)
+    return parse_station_radiation(body), len(body)
 
 
 # --- Forecast runs -----------------------------------------------------------

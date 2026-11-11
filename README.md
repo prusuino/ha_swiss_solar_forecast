@@ -13,14 +13,16 @@
 
 A Home Assistant custom integration that forecasts the output of your PV plant from the **MeteoSwiss local forecast**: global and diffuse radiation, air temperature, wind and precipitation, hour by hour for nine days, for every Swiss postal code — official open data, no account, no API key, no limit on the number of calls.
 
-> **Open data only.** Everything comes from the files MeteoSwiss publishes under CC BY 4.0 on the federal geodata platform. The integration reads only the rows of your place with range requests: about 13 MB a day, where the files of a single model run weigh 160 MB.
+> **Open data only.** Everything comes from the files MeteoSwiss publishes under CC BY 4.0 on the federal geodata platform. The integration reads only the rows of your place with range requests: about 14 MB a day, where the files of a single model run weigh 160 MB.
 
 ## Highlights
 
 - **Your roof from the solar cadastre**: type your address or drop the marker on the roof, and the planes of that building appear from *Sonnendach*, the Swiss solar cadastre of the Federal Office of Energy — orientation, tilt, area, suitability class and long-term yield. Tick every plane that carries modules, correct what you know better, done. No guessing of azimuths; a plane the cadastre does not know is entered by hand.
 - **The MeteoSwiss forecast, on your roof**: global *and* diffuse radiation from the official model, projected on your module plane (azimuth, tilt), with the cell temperature from the forecast air temperature and wind, your system losses and the inverter limit. No guessed cloud factors.
 - **Mountains and valley sides count**: the horizon of your place is read once from the swisstopo elevation model. While the sun stands behind a ridge, the direct beam is left out and only the diffuse light counts — the late sunrise and the early sunset of a valley are in the forecast.
-- **Learns from your own meter**: name the energy sensor of your plant, and the integration compares every hour what was forecast with what was counted. It learns one factor per hour of the day: the tree that shades the roof until ten, the building next door in the evening, soiling, a plant that simply does better than the textbook.
+- **Follows the sky of the last hour**: the nearest MeteoSwiss measurement station tells every ten minutes how much light really arrives. When that is less — or more — than the model expected, the hours just ahead are corrected, fading out over three hours. No meter and no setting needed.
+- **A day that adds up**: an hour that is over keeps the value it ended with. A later model run no longer rewrites the morning, so the day's total in the evening is what was forecast for it — and with a yield meter, the finished hours count with what the plant really produced.
+- **Learns from your own meter**: name the energy sensor of your plant — right at the setup or later — and the integration compares every hour what was forecast with what was counted. It learns one factor per part of the sky the sun stands in: the tree that shades the roof while the sun is low in the south-east, the building next door in the evening, soiling, a plant that simply does better than the textbook. Because it goes by the sun's position and not by the clock, what was learned in October still fits in February.
 - **Snow on the modules**: after a snowfall a radiation forecast alone is far too high. The integration follows the snow from the forecast — what falls in the cold covers the modules, steep modules clear sooner than flat ones — and takes the covered share out of the forecast until it has slid off or melted. A sensor shows the cover and when the modules are expected to be free.
 - **Tells you how good it is**: with a meter, two sensors show the accuracy of the forecast over the last 7 and 30 days, measured against what your plant really produced.
 - **Energy dashboard**: the forecast appears as *solar production forecast* in the energy dashboard, like Solcast or Forecast.Solar — without an account or a daily request limit.
@@ -28,7 +30,7 @@ A Home Assistant custom integration that forecasts the output of your PV plant f
 - **Several roofs, one plant**: all planes in one entry, with the plant's totals and a sensor per plane; the energy dashboard gets the sum.
 - **A yardstick**: with a cadastre roof, a sensor shows the long-term expectation of a day in this month and the forecast as a percentage of it — "today 60 % of a normal November day".
 - **Damping by hand**: without a meter, a damping factor per plane scales the result once you have compared a few weeks with your real yield.
-- **Reads sparingly**: one HEAD request every 15 minutes tells whether a new model run exists; only then are the parameter files read. Four of them cost about 160 KB together with every hourly run; the temperature file is laid out differently and costs 2.3 MB, so it is read every six hours only and its series is kept in between. That makes about 13 MB a day. Diagnostics sensors show the traffic.
+- **Reads sparingly**: one HEAD request every 15 minutes tells whether a new model run exists; only then are the parameter files read. Four of them cost about 160 KB together with every hourly run; the temperature file is laid out differently and costs 2.3 MB, so it is read every six hours only and its series is kept in between. That makes about 13 MB a day. While the sun is up, the nearest measurement station's file of the day (about 20 KB) is read once in 15 minutes: up to 1 MB a day in summer, a third of that in winter. Diagnostics sensors show the traffic.
 - **Set up in a minute**: from your Home Assistant location or by typing a place or postal code; German, English, French and Italian; repairs notice when the data cannot be read; diagnostics download with your location redacted.
 
 ## Background
@@ -45,7 +47,7 @@ One device per plant, with these sensors for the plant (the planes' sum):
 
 | Entity | Description |
 |---|---|
-| `sensor.swiss_solar_forecast_<id>_energy_today` | Expected energy of the local day, kWh. Attributes: the hourly power for nine days, the daily energy per day, whether the diffuse share came from the forecast, whether the terrain horizon and the self-calibration are at work. |
+| `sensor.swiss_solar_forecast_<id>_energy_today` | Expected energy of the local day, kWh. Attributes: the hourly power for nine days, the daily energy per day, whether the diffuse share came from the forecast, whether the terrain horizon, the self-calibration and the station correction are at work, and how many of today's hours count with what the yield meter measured. |
 | `…_energy_tomorrow`, `…_energy_day_after_tomorrow` | The next two days (the day after tomorrow is disabled by default). |
 | `…_energy_remaining_today` | What is still to come today, from now: the current hour pro rata, the later hours whole. |
 | `…_power_now`, `…_power_next_hour` | The forecast AC power of the current and the next hour, W. |
@@ -54,7 +56,8 @@ One device per plant, with these sensors for the plant (the planes' sum):
 | `…_typical_day_energy`, `…_forecast_vs_typical` | Only with planes chosen from the cadastre: the long-term expectation of a day of this month (attributes: tomorrow, the whole month, the figure per plane) and today's forecast as a percentage of it. |
 | `…_snow_cover` | With the snow model switched on: the share of the modules under snow now, in percent (*unknown* while a run carries no precipitation forecast). Attributes: the cover per plane, the snow on the ground in millimetres of water, the hour from which the modules are expected to be free, and the energy the snow takes today. |
 | `…_terrain_horizon` | Diagnostics, with the terrain horizon switched on: the highest angle under which the terrain is seen, in degrees. Attributes: the direction of that point, the height of the place and the whole profile (direction → angle, north-east over south to north-west). |
-| `…_calibration_factor` | Diagnostics, with a yield meter: the factor learned over all hours (1 = the model fits). Attributes: the factor per hour of the day (local time), the number of hours learned, the last one, and the energy of today without the calibration. |
+| `…_station_correction` | Diagnostics: what the nearest measurement station received in the last hour, in percent of what was forecast for it (100 = as forecast; *unknown* at night, without a station in reach or while it is silent). Attributes: the station and its distance, the measured and the forecast radiation, the time of the last measurement and the weight the difference has on the current hour. |
+| `…_calibration_factor` | Diagnostics, with a yield meter: the factor learned over all hours (1 = the model fits). Attributes: the factor of each of today's hours (local time), the factor per part of the sky (`azimuth/elevation`), the number of hours learned, the last one, and the energy of today without the calibration. |
 | `…_accuracy_7_days`, `…_accuracy_30_days` | Diagnostics, with a yield meter: the accuracy of the forecast that stood at the start of each day, over the last 7 and 30 full days, in percent. Attributes: the accuracy of the last forecast before each hour, the hourly accuracy, the bias, the number of days and the energy forecast and measured. |
 | `…_run`, `…_requests_today`, `…_bytes_today` | Diagnostics: the model run in use — with the requests and bytes its read cost as attributes — and the requests and bytes read since midnight (disabled by default). |
 
@@ -72,7 +75,12 @@ For every forecast hour the integration takes the global radiation on the horizo
 4. the cell temperature from the air temperature, the irradiance and the wind (Faiman; half of the forecast wind is taken to reach the modules) and the DC power of the plane with a temperature coefficient of −0.4 %/K,
 5. the share of the modules that is free of snow,
 6. the AC power after your system losses, clipped at the inverter limit when you set one, times the damping factor,
-7. with a yield meter, the factor learned for that hour of the day.
+7. with a yield meter, the factor learned for the part of the sky the sun stands in.
+
+Two things happen around this chain:
+
+- **The hours just ahead follow the nearest station.** While the sun is up, the global radiation the nearest MeteoSwiss measurement station received in the last hour is set against what the model had forecast for the same ten-minute steps. The ratio (kept between 0.3 and 1.5) corrects the radiation of the running hour and, fading out, of the next three; what is taken away or added is direct light, the diffuse light stays. The nearer the station, the more its word counts: a station next door counts fully, one 15 km away half, and only stations within 25 km and within 300 m of the plant's height are asked at all. A station that falls silent is forgotten after 75 minutes. The sensor `…_station_correction` shows the ratio; switch the correction off under **Configure → Σ** if the station does not stand for your sky.
+- **The hours that are over stay as they were.** Every model run computes the whole day again, the morning included — with weather that may never have come. An hour that has ended therefore keeps the value it ended with (kept for two days, across restarts). With a yield meter, the day's energy of the plant counts the finished hours with what the meter measured in them; the planes keep their forecast, since no meter tells which of them fell short, so on such a day the planes can add up to more or less than the plant.
 
 Should a run come without diffuse radiation, the diffuse share is estimated from the clearness index (Erbs). The attribute `diffuse_from_forecast` tells which case applies. Without a wind forecast a light breeze is assumed. The model knows the terrain and follows the snow, but it knows no trees, chimneys or neighbouring roofs: that is what the self-calibration learns from your meter. Without a meter, use the damping factor, or set up one entry per differently shaded part.
 
@@ -107,7 +115,7 @@ The sensors are plain numbers and timestamps, so the automation editor can use t
 
 **Settings → Devices & services → Add integration → Swiss Solar Forecast.**
 
-1. **Place.** A name for the plant, then your Home Assistant location pre-filled on the map: move the marker onto your roof, or type a street address (every address of Switzerland is known; a building without a street address is found by the marker).
+1. **Place.** A name for the plant, then your Home Assistant location pre-filled on the map: move the marker onto your roof, or type a street address (every address of Switzerland is known; a building without a street address is found by the marker). If the plant has an energy sensor — the total or daily counter of the inverter — name it here as the **yield meter**: the forecast then learns from the plant itself (see [Self-calibration](#self-calibration)). It can be named, changed or removed later as well.
 2. **Roof planes.** The planes of that building from the Sonnendach cadastre, largest first, with orientation, tilt, area, suitability class (1 low … 5 top) and the long-term yield. Tick every plane that carries modules. The pencil entry adds a plane the cadastre does not know (a garage on another building, a wrong outline, a ground-mounted plant): you then enter orientation and tilt yourself. Tick it together with the others if you need both.
 3. **Figures, plane by plane.** For each ticked plane a form with a name, orientation and tilt from the cadastre (correct them if you know better), the installed peak power in kWp (the form tells how much the cadastre's area would hold), the system losses (14 % is a usual figure for wiring, inverter, soiling and mismatch), the inverter's AC limit (0 for none) and the damping factor (1 to start with). The MeteoSwiss forecast point nearest to the place is chosen automatically.
 
@@ -126,14 +134,14 @@ For every forecast hour the sun is looked at every ten minutes. While it stands 
 
 ### Self-calibration
 
-Open the ⚙️ of the entry, **Configure → Σ**, and choose under *Yield meter* the energy sensor that counts what the **whole plant** produces: the total or daily counter of the inverter or of a meter, in Wh, kWh or MWh. From then on:
+Name the yield meter at the setup, or open the ⚙️ of the entry, **Configure → Σ**, and choose under *Yield meter* the energy sensor that counts what the **whole plant** produces: the total or daily counter of the inverter or of a meter, in Wh, kWh or MWh. From then on:
 
 - At every full hour the integration reads the meter and compares its increase with what the model had forecast for that hour (before any calibration).
-- It keeps, per hour of the day, a running sum of counted and forecast energy in which older days fade (a memory of about two weeks), and from it a factor for that hour. The forecast of every coming day is multiplied with the factor of each hour and clipped at the inverter limit again.
-- A factor needs evidence: after one day it has hardly moved, after two to three weeks of productive days an hour is trusted fully. Hours without evidence use the factor of the plant as a whole. The factors stay between 0.1 and 1.5.
+- It keeps, per part of the sky — the sun's direction in steps of 15° and its height in steps of 10° — a running sum of counted and forecast energy in which older days fade (a memory of about two weeks), and from it a factor for that part of the sky. Every coming hour is multiplied with the factor of where the sun will stand in it and clipped at the inverter limit again. A tree shades the roof when the sun is behind it, whatever the clock says: what was learned keeps fitting as the days grow shorter or longer.
+- A factor needs evidence: after one day it has hardly moved, after two to three weeks of productive days a part of the sky is trusted fully. Parts without evidence use the factor of the plant as a whole. The factors stay between 0.1 and 1.5.
 - Hours with next to no forecast (night, deep overcast), hours with snow on the modules, hours in which the meter did not move or jumped, and gaps in the readings teach nothing.
 
-The sensor `…_calibration_factor` shows the factor over all hours and, as attributes, the factor per hour of the day, the number of hours learned and the energy of today as the model alone would have it. What was learned is kept across restarts. It starts anew when you pick another meter or change the figures of a plane or the inverter limit, and it is deleted when you remove the meter from the options.
+The sensor `…_calibration_factor` shows the factor over all hours and, as attributes, the factor of each of today's hours, the factor per part of the sky, the number of hours learned and the energy of today as the model alone would have it. What was learned is kept across restarts. It starts anew when you pick another meter or change the figures of a plane or the inverter limit, and it is deleted when you remove the meter from the options.
 
 Good to know:
 
@@ -176,6 +184,8 @@ With a yield meter two diagnostics sensors tell how well the forecast did, `…_
 
 Only days of which at least 20 hours were counted enter the figures, and the running day never does, so the first value appears after the first full day. The figures compare the forecast as the sensors showed it, calibration and snow included. They are kept across restarts (the last 40 days) and start anew when you pick another meter or change the planes.
 
+**Your figures make the forecast better for everyone.** Nothing is sent anywhere by itself. If you want to help, download the diagnostics of the entry (⋮ menu → *Download diagnostics*) and attach them to a [forecast accuracy report](https://github.com/prusuino/ha_swiss_solar_forecast/issues/new?template=forecast_accuracy.yml). The file carries, day by day for the last 30 days, the measured energy, the forecast and the day-ahead forecast, with what the calibration learned and what the station correction did — and neither your location nor the name of your meter or of the station.
+
 ### Damping by hand
 
 Without a yield meter: compare `…_energy_today` with the daily energy of your inverter over a couple of weeks with mixed weather. If the forecast runs 10 % high, set the damping factor to 0.9; if one plane is partly shaded in the morning, a lower factor on that plane is the remedy.
@@ -204,11 +214,11 @@ The integration declares **Bronze** on the [Home Assistant integration quality s
 - **Forecast far too high or too low.** Check azimuth (180 is south) and tilt first, then the peak power (DC, kWp, not the inverter's AC rating), then name a yield meter for the self-calibration or set the damping factor.
 - **Terrain horizon sensor stays unknown.** The geo API could not be reached yet; the forecast runs without the terrain and the read is tried again by itself (after six hours, then at growing intervals).
 - **Calibration factor does not move.** Look at the attributes: `samples` counts the learned hours. It needs a meter with a numeric state in Wh, kWh or MWh that rises during the hour, and an hour with a forecast worth comparing.
-- **Diagnostics.** The entry's ⋮ menu → *Download diagnostics* contains the planes, the run, the traffic, the hourly figures, the terrain horizon in brief and what the calibration learned, with your location and the name of the meter redacted.
+- **Diagnostics.** The entry's ⋮ menu → *Download diagnostics* contains the planes, the run, the traffic, the hourly figures, the terrain horizon in brief, what the calibration learned, the station correction and the accuracy day by day, with your location and the name of the meter redacted and the measurement station left out.
 
 ## Data source & license
 
-Forecast data: Federal Office of Meteorology and Climatology MeteoSwiss, open government data on data.geo.admin.ch, CC BY 4.0. Roof data: Sonnendach, Swiss Federal Office of Energy (SFOE), open government data through the federal geo API (api3.geo.admin.ch), source attribution required. Terrain: the elevation model of the Federal Office of Topography swisstopo (swissALTI3D), open government data through the same API. Address search: the federal address register through the same API. This integration is not affiliated with MeteoSwiss, the SFOE or swisstopo. See `NOTICE.md`.
+Forecast data and station measurements: Federal Office of Meteorology and Climatology MeteoSwiss, open government data on data.geo.admin.ch, CC BY 4.0. Roof data: Sonnendach, Swiss Federal Office of Energy (SFOE), open government data through the federal geo API (api3.geo.admin.ch), source attribution required. Terrain: the elevation model of the Federal Office of Topography swisstopo (swissALTI3D), open government data through the same API. Address search: the federal address register through the same API. This integration is not affiliated with MeteoSwiss, the SFOE or swisstopo. See `NOTICE.md`.
 
 ## Disclaimer
 

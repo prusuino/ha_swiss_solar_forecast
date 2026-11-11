@@ -4,6 +4,8 @@
 
 The radiation and temperature forecast comes from the **MeteoSwiss local forecast** published as open government data on the federal geodata platform (data.geo.admin.ch), licence **CC BY 4.0**. Source: Federal Office of Meteorology and Climatology MeteoSwiss. The integration reads only the rows of one forecast point per file with HTTP range requests and identifies itself with its own User-Agent.
 
+The station correction uses the ten-minute global radiation of the **MeteoSwiss automatic measurement network (SwissMetNet)**, published the same way under the same licence.
+
 The integration is not affiliated with or endorsed by MeteoSwiss.
 
 ## Roof data — Sonnendach (SFOE)

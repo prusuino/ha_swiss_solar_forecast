@@ -285,18 +285,26 @@ async def test_calibration_learns_from_the_yield_meter(hass: HomeAssistant, enab
     factor = hass.states.get(PREFIX + "calibration_factor")
     assert factor.attributes["samples"] == 1 and factor.attributes["last_sample"] == "2026-06-21T11:00:00+00:00"
     assert 0.9 < float(factor.state) < 1.0  # one hour is weak evidence
-    # learned for the hour from 11 UTC, shown in local time
-    assert list(factor.attributes["hourly"]) == ["13:00"] and 0.75 < factor.attributes["hourly"]["13:00"] < 0.9
+    # learned for the part of the sky the sun stood in from 11 UTC; today's hours are shown in local time
+    sky = entry.runtime_data.calibration.bin_of(datetime(2026, 6, 21, 11, 0, tzinfo=UTC))
+    assert sky.endswith("/40") and list(factor.attributes["sun_position"]) == [sky]
+    assert 0.75 < factor.attributes["hourly"]["13:00"] < 0.9
+    assert factor.attributes["sun_position"][sky] == factor.attributes["hourly"]["13:00"]
     today = hass.states.get(PREFIX + "energy_today")
     assert today.attributes["calibrated"] is True
-    assert before * 0.9 < float(today.state) < before
-    assert factor.attributes["energy_today_uncalibrated"] == before  # the model itself is unchanged
+    # the hour that is over counts with what the meter counted, the hours ahead with what was learned
+    short = forecast_wh / 2000.0
+    assert today.attributes["measured_hours"] == 1
+    assert before - short - 0.1 * before < float(today.state) < before - short + 0.01
+    assert abs(factor.attributes["energy_today_uncalibrated"] - before) < 0.01  # the model itself is unchanged
+    # the planes keep their forecast: nobody knows which of them fell short
     planes = today.attributes["planes"]
-    assert abs(planes["South"] + planes["East"] - float(today.state)) < 0.02
+    assert abs(planes["South"] + planes["East"] - float(today.state) - short) < 0.03
 
     diagnostics = await async_get_config_entry_diagnostics(hass, entry)
     assert diagnostics["entry"]["options"]["yield_sensor"] == "**REDACTED**"
-    assert diagnostics["calibration"]["samples"] == 1 and list(diagnostics["calibration"]["factors_utc"]) == [11]
+    assert diagnostics["calibration"]["samples"] == 1 and diagnostics["calibration"]["bins_by"] == "sun_position"
+    assert list(diagnostics["calibration"]["factors"]) == [sky] and diagnostics["finished_hours"]["measured"] == 1
     assert "sensor.pv_total" not in str(diagnostics)
 
     # an unavailable meter teaches nothing and breaks nothing
@@ -304,14 +312,18 @@ async def test_calibration_learns_from_the_yield_meter(hass: HomeAssistant, enab
     await _full_hour(hass, freezer, datetime(2026, 6, 21, 13, 0, 5, tzinfo=UTC))
     assert hass.states.get(PREFIX + "calibration_factor").attributes["samples"] == 1
 
-    # what was learned survives a restart
+    # what was learned survives a restart, and so does the hour the meter counted
     learned = hass.states.get(PREFIX + "calibration_factor").state
+    counted = float(hass.states.get(PREFIX + "energy_today").state)
     assert await hass.config_entries.async_unload(entry.entry_id)
     await hass.async_block_till_done()
     assert memory_store[STORE_KEY]["data"]["calibration"]["samples"] == 1
+    assert len(memory_store[STORE_KEY]["data"]["frozen"]["measured"]) == 1
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done(wait_background_tasks=True)
     assert hass.states.get(PREFIX + "calibration_factor").state == learned
+    today = hass.states.get(PREFIX + "energy_today")
+    assert today.attributes["measured_hours"] == 1 and abs(float(today.state) - counted) < 0.01
 
     # another plane: the learned factors no longer fit and start again
     hass.config_entries.async_update_entry(entry, options={"yield_sensor": "sensor.pv_total", "planes": [{**PLANES[0], "kwp": 12.0}, PLANES[1]]})
@@ -354,10 +366,11 @@ async def test_calibration_stays_under_the_inverter_limit(hass: HomeAssistant, e
     assert coordinator.data.plant.hour_at(noon).power_kw == 3.0  # clipped already
 
     # the plant made more than forecast in that hour, often enough to be believed
-    coordinator.calibration.bins[11] = [45000.0, 30000.0, 30.0]
+    sky = coordinator.calibration.bin_of(datetime(2026, 6, 21, 11, 0, tzinfo=UTC))
+    coordinator.calibration.bins[sky] = [45000.0, 30000.0, 30.0]
     await coordinator.async_refresh()
     await hass.async_block_till_done(wait_background_tasks=True)
-    assert coordinator.calibration.factor(11) > 1.2
+    assert coordinator.calibration.factor(sky) > 1.2
     assert coordinator.data.plant.hour_at(noon).power_kw == 3.0
     assert coordinator.data.raw_plant.hour_at(noon).power_kw == 3.0
 

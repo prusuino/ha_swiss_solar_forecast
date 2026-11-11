@@ -4,17 +4,22 @@ A forecast from weather and geometry knows nothing about the tree that
 shades the modules until ten, the chimney, the dirt or an optimistic
 datasheet. The plant's energy meter does. Every full hour the meter's
 increase is compared with what was forecast for that hour, and the ratio
-is learned per hour of the day (in UTC, so it follows the sun and not the
-clock change). The forecast is then multiplied by the learned factor of
-each hour.
+is learned for the part of the sky the sun stood in during that hour (its
+compass bearing in steps of 15°, its height in bands of 10°). The forecast
+of an hour is then multiplied by the factor learned for the sun's place in
+that hour.
+
+The sky, not the clock, is what a shadow depends on: the tree that covers
+the sun low in the south-east does so in November at nine and in February
+at eight, and what was learned in one month holds in the other. A part of
+the sky the sun has not been in yet takes the plant's overall factor.
 
 The learning is deliberately cautious:
 
 * It sums energy, not ratios: a dull hour with a few watt-hours cannot
   outweigh a bright one.
-* Old hours fade (each new sample of an hour lowers the weight of the
-  earlier ones), so the factors follow the seasons: the tree's shadow in
-  December is not the one in June.
+* Old hours fade (each new sample of a part of the sky lowers the weight
+  of the earlier ones), so a tree that grows or is felled is followed.
 * With few samples a factor stays near the plant's overall factor, and
   that one near 1; only evidence moves it. That caution fades as the
   samples come in: after about two weeks of productive hours the measured
@@ -32,18 +37,25 @@ from collections.abc import Collection
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
-DECAY = 0.93  # weight left of the earlier samples of an hour when a new one arrives (about two weeks of memory)
+from .solar import sun_position
+
+DECAY = 0.93  # weight left of the earlier samples of a bin when a new one arrives (about two weeks of memory)
 PRIOR_OVERALL = 12.0  # samples' worth of belief that the plant's overall factor is 1
-PRIOR_HOUR = 3.0  # samples' worth of belief that an hour's factor is the overall one
-# Faded samples from which the belief counts nothing any more (an hour's
+PRIOR_BIN = 3.0  # samples' worth of belief that a bin's factor is the overall one
+# Faded samples from which the belief counts nothing any more (a bin's
 # faded count settles near 14 with a sample every day).
 FULL_TRUST_OVERALL = 60.0
-FULL_TRUST_HOUR = 10.0
+FULL_TRUST_BIN = 10.0
 FACTOR_MIN = 0.1
 FACTOR_MAX = 1.5
 LOG_KEEP = timedelta(hours=48)
+AZIMUTH_STEP = 15  # degrees of compass bearing per bin
+ELEVATION_STEP = 10  # degrees of the sun's height per band
+ELEVATION_TOP = 40  # the highest band takes everything above: nothing shades a sun that high
+BINS_BY = "sun_position"  # marks what the kept bins are keyed by
 
 _TO_WH = {"wh": 1.0, "kwh": 1000.0, "mwh": 1_000_000.0}
+_HALF = timedelta(minutes=30)
 
 
 def energy_wh(value: object, unit: object) -> float | None:
@@ -60,12 +72,35 @@ def energy_wh(value: object, unit: object) -> float | None:
     return reading * factor
 
 
+def sun_bin(start: datetime, lat: float, lon: float) -> str:
+    """The part of the sky the sun stands in at the middle of the hour that
+    starts at `start`, as "bearing/height" of the bin's lower edges."""
+    sun = sun_position(start + _HALF, lat, lon)
+    azimuth = int(sun.azimuth % 360.0 // AZIMUTH_STEP) * AZIMUTH_STEP
+    elevation = min(max(int(sun.elevation // ELEVATION_STEP) * ELEVATION_STEP, 0), ELEVATION_TOP)
+    return f"{azimuth}/{elevation}"
+
+
+def _valid_bin(key: str) -> bool:
+    azimuth, _, elevation = key.partition("/")
+    if not (azimuth.isdigit() and elevation.isdigit()):
+        return False
+    return int(azimuth) < 360 and int(azimuth) % AZIMUTH_STEP == 0 and int(elevation) <= ELEVATION_TOP and int(elevation) % ELEVATION_STEP == 0
+
+
+def _order(key: str) -> tuple[int, int]:
+    azimuth, _, elevation = key.partition("/")
+    return int(azimuth), int(elevation)
+
+
 @dataclass
 class Calibration:
     """What was learned for one plant, and what is needed to learn more."""
 
     fingerprint: str = ""  # of the plant's figures and the meter: a change starts the learning afresh
-    bins: dict[int, list[float]] = field(default_factory=dict)  # hour of day (UTC) -> [measured Wh, forecast Wh, samples], faded
+    lat: float = 0.0  # the plant's place: where the sun stands follows from it
+    lon: float = 0.0
+    bins: dict[str, list[float]] = field(default_factory=dict)  # part of the sky -> [measured Wh, forecast Wh, samples], faded
     log: dict[str, float] = field(default_factory=dict)  # hour start (ISO, UTC) -> uncalibrated forecast Wh
     reading_time: str = ""  # the full hour (ISO, UTC) of the last meter reading
     reading_wh: float | None = None
@@ -116,18 +151,22 @@ class Calibration:
             return False  # nothing forecast worth comparing (night, deep overcast)
         if measured_wh <= 0 or measured_wh > max_wh:
             return False  # outage, snow, meter reset or a jump no plant of this size makes
-        hour = start.astimezone(UTC).hour
-        measured, expected, count = self.bins.get(hour, [0.0, 0.0, 0.0])
-        self.bins[hour] = [measured * DECAY + measured_wh, expected * DECAY + forecast, count * DECAY + 1.0]
+        key = self.bin_of(start)
+        measured, expected, count = self.bins.get(key, [0.0, 0.0, 0.0])
+        self.bins[key] = [measured * DECAY + measured_wh, expected * DECAY + forecast, count * DECAY + 1.0]
         self.samples += 1
         self.last_sample = _key(start)
         return True
 
     # -------------------------------------------------------------- factors
 
+    def bin_of(self, start: datetime) -> str:
+        """The part of the sky the sun stands in during the hour that starts at `start`."""
+        return sun_bin(start, self.lat, self.lon)
+
     @property
     def overall(self) -> float:
-        """The plant's factor over all hours, held near 1 while there is little evidence."""
+        """The plant's factor over the whole sky, held near 1 while there is little evidence."""
         measured = sum(b[0] for b in self.bins.values())
         expected = sum(b[1] for b in self.bins.values())
         count = sum(b[2] for b in self.bins.values())
@@ -136,25 +175,30 @@ class Calibration:
         raw = min(2.0, max(0.05, measured / expected))
         return _clamp(_blend(raw, count, 1.0, PRIOR_OVERALL, FULL_TRUST_OVERALL))
 
-    def factor(self, hour_utc: int) -> float:
-        """The factor of an hour of the day: its own evidence, held near the overall factor while it is thin."""
+    def factor(self, key: str) -> float:
+        """The factor of a part of the sky: its own evidence, held near the overall factor while it is thin."""
         overall = self.overall
-        entry = self.bins.get(hour_utc)
+        entry = self.bins.get(key)
         if not entry or entry[1] <= 0 or entry[2] <= 0:
             return overall
         raw = min(2.0, max(0.05, entry[0] / entry[1]))
-        return _clamp(_blend(raw, entry[2], overall, PRIOR_HOUR, FULL_TRUST_HOUR))
+        return _clamp(_blend(raw, entry[2], overall, PRIOR_BIN, FULL_TRUST_BIN))
 
-    def factors(self) -> dict[int, float]:
-        """The factors of the hours with evidence."""
-        return {hour: round(self.factor(hour), 3) for hour in sorted(self.bins)}
+    def factor_at(self, start: datetime) -> float:
+        """The factor of the hour that starts at `start`."""
+        return self.factor(self.bin_of(start))
+
+    def factors(self) -> dict[str, float]:
+        """The factors of the parts of the sky with evidence, from north over east."""
+        return {key: round(self.factor(key), 3) for key in sorted(self.bins, key=_order)}
 
     # ---------------------------------------------------------- persistence
 
     def as_dict(self) -> dict:
         return {
             "fingerprint": self.fingerprint,
-            "bins": {str(hour): [round(v, 3) for v in values] for hour, values in self.bins.items()},
+            "bins_by": BINS_BY,
+            "bins": {key: [round(v, 3) for v in values] for key, values in self.bins.items()},
             "log": self.log,
             "reading_time": self.reading_time,
             "reading_wh": self.reading_wh,
@@ -163,26 +207,48 @@ class Calibration:
         }
 
     @classmethod
-    def from_dict(cls, data: object, fingerprint: str) -> Calibration:
+    def from_dict(cls, data: object, fingerprint: str, lat: float, lon: float) -> Calibration:
         """What was kept, when it belongs to this plant and meter; otherwise a fresh start."""
         if not isinstance(data, dict) or data.get("fingerprint") != fingerprint:
-            return cls(fingerprint=fingerprint)
+            return cls(fingerprint=fingerprint, lat=lat, lon=lon)
         try:
-            bins = {int(hour): [float(v) for v in values][:3] for hour, values in (data.get("bins") or {}).items()}
-            bins = {hour: values for hour, values in bins.items() if 0 <= hour <= 23 and len(values) == 3}
+            last_sample = str(data.get("last_sample") or "")
+            kept = {str(key): [float(v) for v in values][:3] for key, values in (data.get("bins") or {}).items()}
+            kept = {key: values for key, values in kept.items() if len(values) == 3}
+            if data.get("bins_by") == BINS_BY:
+                bins = {key: values for key, values in kept.items() if _valid_bin(key)}
+            else:
+                bins = _from_hours(kept, last_sample, lat, lon)
             log = {str(key): float(value) for key, value in (data.get("log") or {}).items()}
             reading = data.get("reading_wh")
             return cls(
                 fingerprint=fingerprint,
+                lat=lat,
+                lon=lon,
                 bins=bins,
                 log=log,
                 reading_time=str(data.get("reading_time") or ""),
                 reading_wh=None if reading is None else float(reading),
                 samples=int(data.get("samples") or 0),
-                last_sample=str(data.get("last_sample") or ""),
+                last_sample=last_sample,
             )
         except (AttributeError, TypeError, ValueError):
-            return cls(fingerprint=fingerprint)
+            return cls(fingerprint=fingerprint, lat=lat, lon=lon)
+
+
+def _from_hours(kept: dict[str, list[float]], last_sample: str, lat: float, lon: float) -> dict[str, list[float]]:
+    """Bins an earlier version learned per hour of the day (UTC): each hour
+    moves to where the sun stood in it on the day of the last sample."""
+    if not last_sample:
+        return {}
+    day = datetime.fromisoformat(last_sample).astimezone(UTC)
+    bins: dict[str, list[float]] = {}
+    for hour, values in kept.items():
+        if not 0 <= int(hour) <= 23:
+            continue
+        key = sun_bin(day.replace(hour=int(hour), minute=0, second=0, microsecond=0), lat, lon)
+        bins[key] = [a + b for a, b in zip(bins.get(key, [0.0, 0.0, 0.0]), values)]
+    return bins
 
 
 def _key(when: datetime) -> str:
