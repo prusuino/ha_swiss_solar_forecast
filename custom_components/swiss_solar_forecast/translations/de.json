@@ -12,7 +12,7 @@
           "yield_sensor": "Ertragszähler (optional)"
         },
         "data_description": {
-          "yield_sensor": "Ein Energiesensor, der zählt, was die ganze Anlage produziert (Gesamt- oder Tageszähler, Wh, kWh oder MWh). Damit korrigiert sich die Prognose selbst: Sie lernt, was das Modell nicht wissen kann (Verschattung durch Bäume oder Gebäude, Verschmutzung), der heutige Wert übernimmt die bereits gezählten Stunden, und die Trefferquote der Prognose wird sichtbar. Lässt sich später unter «Konfigurieren» setzen oder ändern."
+          "yield_sensor": "Ein Energiesensor, der zählt, was die Module dieses Eintrags produzieren, alle und keine anderen (Gesamt- oder Tageszähler, Wh, kWh oder MWh). Kein Zähler, der auch eine zweite Anlage mitzählt, und nicht derselbe Zähler in zwei Einträgen. Damit korrigiert sich die Prognose selbst: Sie lernt, was das Modell nicht wissen kann (Verschattung durch Bäume oder Gebäude, Verschmutzung), der heutige Wert übernimmt die bereits gezählten Stunden, und die Trefferquote der Prognose wird sichtbar. Lässt sich später unter «Konfigurieren» setzen oder ändern."
         }
       },
       "address": {
@@ -24,7 +24,7 @@
       },
       "roofs": {
         "title": "Dachflächen",
-        "description": "{count} Dachfläche(n) bei {place} im Sonnendach-Kataster, die grösste zuerst: Ausrichtung, Neigung, Fläche, Eignungsklasse (1 gering … 5 top) und der langjährige Stromertrag der ganzen Fläche. Kreuze jede Fläche mit Modulen an. Der letzte Eintrag (✎) fügt eine Fläche hinzu, die du von Hand erfasst, für ein Dach, das der Kataster nicht kennt, eine Garage auf einem anderen Gebäude oder eine Freiflächenanlage; zusammen mit den anderen ankreuzen, wenn du beides brauchst.",
+        "description": "{count} Dachfläche(n) bei {place} im Sonnendach-Kataster, die grösste zuerst: Ausrichtung, Neigung, Fläche, Eignungsklasse (1 gering … 5 top) und der langjährige Stromertrag der ganzen Fläche. Kreuze jede Fläche mit Modulen an. Der letzte Eintrag, «Neue Fläche von Hand erfassen», ist für ein Dach, das der Kataster nicht kennt, eine Garage auf einem anderen Gebäude oder eine Freiflächenanlage: Ausrichtung und Neigung gibst du dann selbst ein. Zusammen mit den anderen ankreuzen, wenn du beides brauchst; weitere Flächen von Hand kommen später über «Neu konfigurieren» dazu, eine pro Durchgang.",
         "data": {
           "roofs": "Flächen mit Modulen"
         }
@@ -43,7 +43,7 @@
       },
       "reconfigure": {
         "title": "Anlage verschieben oder Flächen ändern",
-        "description": "Marker verschieben oder eine andere Adresse eingeben; die Dachflächen dort werden als Nächstes gelistet (die bisherigen Flächen der Anlage sind vorangekreuzt), dann die Werte jeder Fläche mit den aktuellen Werten vorausgefüllt. Der Eintrag behält seine Entitäten, IDs und den Verlauf.",
+        "description": "Marker verschieben oder eine andere Adresse eingeben; die Dachflächen dort werden als Nächstes gelistet, zusammen mit den Flächen, die die Anlage schon hat (alle angekreuzt, auch die von Hand erfassten), dann die Werte jeder Fläche mit den aktuellen Werten vorausgefüllt. Der Eintrag behält seine Entitäten, IDs und den Verlauf.",
         "data": {
           "location": "Standort (Marker auf dem Dach)",
           "search": "Strassenadresse (optional; ersetzt den Marker)"
@@ -58,14 +58,14 @@
       },
       "reconfigure_roofs": {
         "title": "Dachflächen",
-        "description": "{count} Dachfläche(n) bei {place} im Sonnendach-Kataster, die grösste zuerst. Kreuze jede Fläche mit Modulen an; der letzte Eintrag (✎) fügt eine von Hand erfasste Fläche hinzu.",
+        "description": "{count} Dachfläche(n) bei {place} im Sonnendach-Kataster, die grösste zuerst. Darunter stehen die Flächen der Anlage, die der Kataster hier nicht führt, auch die von Hand erfassten, mit Name, Leistung und Ausrichtung. Alles, was die Anlage heute hat, ist angekreuzt: Haken stehen lassen heisst behalten, Haken entfernen heisst die Fläche entfernen. Der letzte Eintrag fügt eine neue Fläche von Hand hinzu; für mehrere «Neu konfigurieren» nochmals aufrufen.",
         "data": {
           "roofs": "Flächen mit Modulen"
         }
       },
       "reconfigure_plane": {
         "title": "Fläche {index} von {total}",
-        "description": "Dach: {roof}. Die Werte sind die aktuellen der Fläche, wo die Anlage dieses Dach schon hatte, sonst der Vorschlag aus dem Kataster.",
+        "description": "Fläche: {roof}. Die Werte sind die aktuellen der Fläche, wo die Anlage sie schon hat, sonst der Vorschlag aus dem Kataster.",
         "data": {
           "label": "Name der Fläche",
           "kwp": "Spitzenleistung der Fläche (kWp)",
@@ -79,7 +79,8 @@
     "error": {
       "cannot_connect": "Der Geodienst des Bundes war nicht erreichbar. Internetverbindung prüfen und erneut versuchen.",
       "no_match": "Keine Adresse passt zum Text. Strasse und Ort versuchen, oder stattdessen den Marker verschieben.",
-      "pick_one": "Mindestens eine Fläche ankreuzen, oder den Stift für eine von Hand erfasste Fläche."
+      "pick_one": "Mindestens eine Fläche ankreuzen, oder den letzten Eintrag, um eine von Hand zu erfassen.",
+      "meter_in_use": "Dieser Zähler kalibriert bereits den Eintrag «{entry}». Ein Zähler muss die Module von genau einem Eintrag zählen: den Zähler wählen, der nur diese Anlage zählt, oder das Feld leer lassen."
     },
     "abort": {
       "already_configured": "An diesem Ort ist schon eine Anlage mit diesem Namen eingerichtet. Ihre Flächen änderst du über Neu konfigurieren; ein zweiter Wechselrichter bekommt einen anderen Namen.",
@@ -90,10 +91,10 @@
   "options": {
     "step": {
       "init": {
-        "title": "Welche Fläche?",
-        "description": "Die Flächen der Anlage, und Σ für die Anlage als Ganzes (Wechselrichter-Grenze). Wähle, was du ändern willst. Um Flächen hinzuzufügen oder zu entfernen oder die Anlage zu verschieben, Neu konfigurieren im Menü des Eintrags nutzen.",
+        "title": "Was möchtest du ändern?",
+        "description": "Eine Fläche für ihre Werte (Leistung, Ausrichtung, Neigung, Verluste, Dämpfung), oder die ganze Anlage für die Wechselrichter-Grenze, den Ertragszähler und die Korrekturen. Um Flächen hinzuzufügen oder zu entfernen oder die Anlage zu verschieben, «Neu konfigurieren» im Menü des Eintrags nutzen.",
         "data": {
-          "plane": "Fläche"
+          "plane": "Fläche oder ganze Anlage"
         }
       },
       "plane": {
@@ -122,12 +123,27 @@
           "terrain_horizon": "Liest den Horizont des Standorts einmal aus dem Höhenmodell von swisstopo. Solange die Sonne hinter einem Berg oder einer Talflanke steht, zählt nur das diffuse Licht. Nur das blanke Gelände: Bäume und Gebäude sind im Modell nicht enthalten.",
           "snow": "Verfolgt den Schnee aus der Prognose: Niederschlag, der als Schnee fällt, deckt die Module zu, und sie liefern nichts, bis er abgerutscht oder geschmolzen ist. Steile Module werden schneller frei als flache. Eine Schätzung; mit einem Ertragszähler werden Module, die liefern, obwohl die Prognose sie bedeckt zeigt, sofort freigegeben.",
           "station_correction": "Solange die Sonne am Himmel steht, wird die Strahlung, welche die nächste Messstation von MeteoSchweiz in der letzten Stunde gemessen hat, mit der Prognose für dieselbe Zeit verglichen. Die Abweichung korrigiert die laufende Stunde und abklingend die nächsten drei. Nur mit einer Station im Umkreis von 25 km auf ähnlicher Höhe; kostet tagsüber eine kleine Abfrage alle 15 Minuten.",
-          "yield_sensor": "Ein Energiesensor, der zählt, was die ganze Anlage produziert (Gesamt- oder Tageszähler, Wh, kWh oder MWh). Jede Stunde wird die Prognose mit dem gezählten Ertrag verglichen und daraus ein Faktor je Sonnenstand gelernt: Verschattung durch Bäume oder Gebäude, Verschmutzung, alles, was das Modell nicht kennt. Er folgt der Sonne und nicht der Uhr, das Gelernte gilt also weiter, wenn die Tage länger oder kürzer werden. Abgelaufene Stunden zählen im heutigen Wert mit dem, was der Zähler gezählt hat. Stunden mit Schnee auf den Modulen bleiben aussen vor. Mit dem Zähler sehen Sie auch, wie genau die Prognose in den letzten 7 und 30 Tagen war. Leer lassen schaltet die Selbstkalibrierung aus; ein anderer Zähler oder geänderte Werte einer Fläche lassen das Lernen neu beginnen."
+          "yield_sensor": "Ein Energiesensor, der zählt, was die Module dieses Eintrags produzieren, alle und keine anderen (Gesamt- oder Tageszähler, Wh, kWh oder MWh). Kein Zähler, der auch eine zweite Anlage mitzählt, und nicht derselbe Zähler in zwei Einträgen. Jede Stunde wird die Prognose mit dem gezählten Ertrag verglichen und daraus ein Faktor je Sonnenstand gelernt: Verschattung durch Bäume oder Gebäude, Verschmutzung, alles, was das Modell nicht kennt. Er folgt der Sonne und nicht der Uhr, das Gelernte gilt also weiter, wenn die Tage länger oder kürzer werden. Abgelaufene Stunden zählen im heutigen Wert mit dem, was der Zähler gezählt hat. Stunden mit Schnee auf den Modulen bleiben aussen vor. Mit dem Zähler sehen Sie auch, wie genau die Prognose in den letzten 7 und 30 Tagen war. Leer lassen schaltet die Selbstkalibrierung aus; ein anderer Zähler oder geänderte Werte einer Fläche lassen das Lernen neu beginnen."
         }
       }
     },
+    "error": {
+      "meter_in_use": "Dieser Zähler kalibriert bereits den Eintrag «{entry}». Ein Zähler muss die Module von genau einem Eintrag zählen: den Zähler wählen, der nur diese Anlage zählt, oder das Feld leer lassen."
+    },
     "abort": {
       "no_planes": "Diese Anlage hat keine Flächen; richte sie neu ein."
+    }
+  },
+  "selector": {
+    "roofs": {
+      "options": {
+        "manual": "Neue Fläche von Hand erfassen"
+      }
+    },
+    "plane": {
+      "options": {
+        "plant": "Ganze Anlage (Wechselrichter, Ertragszähler, Korrekturen)"
+      }
     }
   },
   "entity": {
