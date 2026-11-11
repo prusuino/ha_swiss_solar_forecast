@@ -12,7 +12,7 @@
           "yield_sensor": "Compteur de production (facultatif)"
         },
         "data_description": {
-          "yield_sensor": "Un capteur d'énergie qui compte ce que produit toute l'installation (compteur total ou journalier, Wh, kWh ou MWh). Avec lui, la prévision se corrige elle-même : elle apprend ce que le modèle ne peut pas savoir (ombrage par des arbres ou des bâtiments, salissure), la valeur du jour reprend les heures déjà comptées, et vous voyez la précision de la prévision. Peut être défini ou modifié plus tard sous « Configurer »."
+          "yield_sensor": "Un capteur d'énergie qui compte ce que produisent les modules de cette entrée, tous et aucun autre (compteur total ou journalier, Wh, kWh ou MWh). Pas un compteur qui compte aussi une seconde installation, et pas le même compteur dans deux entrées. Avec lui, la prévision se corrige elle-même : elle apprend ce que le modèle ne peut pas savoir (ombrage par des arbres ou des bâtiments, salissure), la valeur du jour reprend les heures déjà comptées, et vous voyez la précision de la prévision. Peut être défini ou modifié plus tard sous « Configurer »."
         }
       },
       "address": {
@@ -24,7 +24,7 @@
       },
       "roofs": {
         "title": "Pans de toit",
-        "description": "{count} pan(s) de toit à {place} dans le cadastre Toitsolaire, le plus grand en premier : orientation, inclinaison, surface, classe d'aptitude (1 faible … 5 excellente) et rendement électrique à long terme du pan entier. Cochez chaque pan qui porte des modules. La dernière entrée (✎) ajoute un pan saisi à la main, pour un toit inconnu du cadastre, un garage sur un autre bâtiment ou une installation au sol ; cochez-la avec les autres s'il vous faut les deux.",
+        "description": "{count} pan(s) de toit à {place} dans le cadastre Toitsolaire, le plus grand en premier : orientation, inclinaison, surface, classe d'aptitude (1 faible … 5 excellente) et rendement électrique à long terme du pan entier. Cochez chaque pan qui porte des modules. La dernière entrée, « Ajouter un nouveau pan à la main », sert pour un toit inconnu du cadastre, un garage sur un autre bâtiment ou une installation au sol : vous saisissez alors vous-même l'orientation et l'inclinaison. Cochez-la avec les autres s'il vous faut les deux ; d'autres pans saisis à la main s'ajoutent plus tard avec Reconfigurer, un par passage.",
         "data": {
           "roofs": "Pans avec modules"
         }
@@ -43,7 +43,7 @@
       },
       "reconfigure": {
         "title": "Déplacer l'installation ou changer ses pans",
-        "description": "Déplacez le marqueur ou saisissez une autre adresse ; les pans de toit y sont listés ensuite (les pans actuels sont précochés), puis les valeurs de chaque pan, préremplies avec les valeurs actuelles. L'entrée garde ses entités, leurs identifiants et l'historique.",
+        "description": "Déplacez le marqueur ou saisissez une autre adresse ; les pans de toit y sont listés ensuite, avec les pans que l'installation possède déjà (tous cochés, y compris ceux saisis à la main), puis les valeurs de chaque pan, préremplies avec les valeurs actuelles. L'entrée garde ses entités, leurs identifiants et l'historique.",
         "data": {
           "location": "Position (marqueur sur le toit)",
           "search": "Adresse (facultatif ; remplace le marqueur)"
@@ -58,14 +58,14 @@
       },
       "reconfigure_roofs": {
         "title": "Pans de toit",
-        "description": "{count} pan(s) de toit à {place} dans le cadastre Toitsolaire, le plus grand en premier. Cochez chaque pan qui porte des modules ; la dernière entrée (✎) ajoute un pan saisi à la main.",
+        "description": "{count} pan(s) de toit à {place} dans le cadastre Toitsolaire, le plus grand en premier. Suivent les pans de l'installation que le cadastre ne liste pas ici, dont ceux saisis à la main, avec nom, puissance et orientation. Tout ce que l'installation possède aujourd'hui est coché : laissez la coche pour garder un pan, retirez-la pour le supprimer. La dernière entrée ajoute un nouveau pan à la main ; pour plusieurs, relancez Reconfigurer.",
         "data": {
           "roofs": "Pans avec modules"
         }
       },
       "reconfigure_plane": {
         "title": "Pan {index} sur {total}",
-        "description": "Toit : {roof}. Les valeurs sont celles du pan actuel lorsque l'installation avait déjà ce toit, sinon la suggestion du cadastre.",
+        "description": "Pan : {roof}. Les valeurs sont celles du pan actuel lorsque l'installation l'a déjà, sinon la suggestion du cadastre.",
         "data": {
           "label": "Nom du pan",
           "kwp": "Puissance crête du pan (kWc)",
@@ -79,7 +79,8 @@
     "error": {
       "cannot_connect": "Le service géographique fédéral n'a pas répondu. Vérifiez la connexion internet et réessayez.",
       "no_match": "Aucune adresse ne correspond au texte. Essayez rue et localité, ou déplacez plutôt le marqueur.",
-      "pick_one": "Cochez au moins un pan, ou le crayon pour un pan saisi à la main."
+      "pick_one": "Cochez au moins un pan, ou la dernière entrée pour en saisir un à la main.",
+      "meter_in_use": "Ce compteur calibre déjà l'entrée « {entry} ». Un compteur doit compter les modules d'une seule entrée : choisissez le compteur qui ne compte que cette installation, ou laissez le champ vide."
     },
     "abort": {
       "already_configured": "Une installation de ce nom est déjà configurée à cet endroit. Modifiez ses pans par Reconfigurer, ou donnez un autre nom à un second onduleur.",
@@ -90,10 +91,10 @@
   "options": {
     "step": {
       "init": {
-        "title": "Quel pan ?",
-        "description": "Les pans de l'installation, et Σ pour l'installation entière (limite de l'onduleur). Choisissez ce que vous voulez changer. Pour ajouter ou retirer des pans, ou déplacer l'installation, utilisez Reconfigurer dans le menu de l'entrée.",
+        "title": "Que voulez-vous modifier ?",
+        "description": "Un pan pour ses valeurs (puissance, orientation, inclinaison, pertes, amortissement), ou toute l'installation pour la limite de l'onduleur, le compteur de production et les corrections. Pour ajouter ou retirer des pans, ou déplacer l'installation, utilisez Reconfigurer dans le menu de l'entrée.",
         "data": {
-          "plane": "Pan"
+          "plane": "Pan ou toute l'installation"
         }
       },
       "plane": {
@@ -122,12 +123,27 @@
           "terrain_horizon": "Lit une fois l'horizon du lieu dans le modèle altimétrique de swisstopo. Tant que le soleil se trouve derrière une montagne ou un flanc de vallée, seule la lumière diffuse compte. Terrain nu uniquement : arbres et bâtiments ne figurent pas dans le modèle.",
           "snow": "Suit la neige à partir de la prévision : les précipitations qui tombent en neige recouvrent les modules, et ils ne produisent rien tant qu'elle n'a pas glissé ou fondu. Les modules raides se dégagent plus vite que les modules plats. Une estimation ; avec un compteur de production, les modules qui produisent alors que la prévision les montre couverts sont aussitôt dégagés.",
           "station_correction": "Tant que le soleil est levé, le rayonnement mesuré durant la dernière heure par la station de mesure de MétéoSuisse la plus proche est comparé à la prévision pour la même période. L'écart corrige l'heure en cours et, en s'atténuant, les trois suivantes. Uniquement avec une station à moins de 25 km et à une altitude semblable ; coûte une petite requête toutes les 15 minutes pendant la journée.",
-          "yield_sensor": "Un capteur d'énergie qui compte ce que produit toute l'installation (compteur total ou journalier, Wh, kWh ou MWh). Chaque heure, la prévision est comparée à la production comptée et un facteur par position du soleil dans le ciel est appris : ombrage par des arbres ou des bâtiments, salissure, tout ce que le modèle ne connaît pas. Il suit le soleil et non l'horloge : ce qui a été appris reste valable quand les jours rallongent ou raccourcissent. Les heures écoulées comptent dans la valeur du jour avec ce que le compteur a compté. Les heures avec de la neige sur les modules sont laissées de côté. Avec le compteur, vous voyez aussi la précision de la prévision sur les 7 et 30 derniers jours. Laissez vide pour désactiver l'auto-calibration ; un autre compteur ou des valeurs modifiées d'un pan font recommencer l'apprentissage."
+          "yield_sensor": "Un capteur d'énergie qui compte ce que produisent les modules de cette entrée, tous et aucun autre (compteur total ou journalier, Wh, kWh ou MWh). Pas un compteur qui compte aussi une seconde installation, et pas le même compteur dans deux entrées. Chaque heure, la prévision est comparée à la production comptée et un facteur par position du soleil dans le ciel est appris : ombrage par des arbres ou des bâtiments, salissure, tout ce que le modèle ne connaît pas. Il suit le soleil et non l'horloge : ce qui a été appris reste valable quand les jours rallongent ou raccourcissent. Les heures écoulées comptent dans la valeur du jour avec ce que le compteur a compté. Les heures avec de la neige sur les modules sont laissées de côté. Avec le compteur, vous voyez aussi la précision de la prévision sur les 7 et 30 derniers jours. Laissez vide pour désactiver l'auto-calibration ; un autre compteur ou des valeurs modifiées d'un pan font recommencer l'apprentissage."
         }
       }
     },
+    "error": {
+      "meter_in_use": "Ce compteur calibre déjà l'entrée « {entry} ». Un compteur doit compter les modules d'une seule entrée : choisissez le compteur qui ne compte que cette installation, ou laissez le champ vide."
+    },
     "abort": {
       "no_planes": "Cette installation n'a aucun pan ; configurez-la à nouveau."
+    }
+  },
+  "selector": {
+    "roofs": {
+      "options": {
+        "manual": "Ajouter un nouveau pan à la main"
+      }
+    },
+    "plane": {
+      "options": {
+        "plant": "Toute l'installation (onduleur, compteur de production, corrections)"
+      }
     }
   },
   "entity": {

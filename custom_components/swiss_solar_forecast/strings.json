@@ -12,7 +12,7 @@
           "yield_sensor": "Yield meter (optional)"
         },
         "data_description": {
-          "yield_sensor": "An energy sensor that counts what the whole plant produces (total or daily counter, Wh, kWh or MWh). With it the forecast corrects itself: it learns what the model cannot know (shading by trees or buildings, soiling), today's figure takes the hours the meter has already counted, and you see how accurate the forecast was. Can be set or changed later under Configure."
+          "yield_sensor": "An energy sensor that counts what the modules of this entry produce, all of them and no others (total or daily counter, Wh, kWh or MWh). Not a meter that also counts a second plant, and not the same meter in two entries. With it the forecast corrects itself: it learns what the model cannot know (shading by trees or buildings, soiling), today's figure takes the hours the meter has already counted, and you see how accurate the forecast was. Can be set or changed later under Configure."
         }
       },
       "address": {
@@ -24,7 +24,7 @@
       },
       "roofs": {
         "title": "Roof planes",
-        "description": "{count} roof plane(s) at {place} in the Sonnendach cadastre, largest first: orientation, tilt, area, suitability class (1 low … 5 top) and the long-term electricity yield of the whole plane. Tick every plane that carries modules. The last entry (✎) adds a plane you enter by hand, for a roof the cadastre does not know, a garage on another building or a ground-mounted plant; tick it together with the others if you need both.",
+        "description": "{count} roof plane(s) at {place} in the Sonnendach cadastre, largest first: orientation, tilt, area, suitability class (1 low … 5 top) and the long-term electricity yield of the whole plane. Tick every plane that carries modules. The last entry, \"Add a new plane by hand\", is for a roof the cadastre does not know, a garage on another building or a ground-mounted plant: you then enter orientation and tilt yourself. Tick it together with the others if you need both; further planes by hand are added later with Reconfigure, one at a time.",
         "data": {
           "roofs": "Planes with modules"
         }
@@ -43,7 +43,7 @@
       },
       "reconfigure": {
         "title": "Move the plant or change its planes",
-        "description": "Move the marker or type another address; the roof planes there are listed next (the plant's current planes are pre-ticked), then the figures of every plane with the current values pre-filled. The entry keeps its entities, their ids and history.",
+        "description": "Move the marker or type another address; the roof planes there are listed next, together with the planes the plant already has (all of them ticked, the ones entered by hand included), then the figures of every plane with the current values pre-filled. The entry keeps its entities, their ids and history.",
         "data": {
           "location": "Location (marker on the roof)",
           "search": "Street address (optional; replaces the marker)"
@@ -58,14 +58,14 @@
       },
       "reconfigure_roofs": {
         "title": "Roof planes",
-        "description": "{count} roof plane(s) at {place} in the Sonnendach cadastre, largest first. Tick every plane that carries modules; the last entry (✎) adds a plane entered by hand.",
+        "description": "{count} roof plane(s) at {place} in the Sonnendach cadastre, largest first. Below them are the plant's planes the cadastre does not list here, the ones entered by hand among them, with name, peak power and orientation. Everything the plant has now is ticked: leave a tick to keep the plane, remove it to remove the plane. The last entry adds one new plane by hand; for more than one, run Reconfigure again.",
         "data": {
           "roofs": "Planes with modules"
         }
       },
       "reconfigure_plane": {
         "title": "Plane {index} of {total}",
-        "description": "Roof: {roof}. The figures are the plane's current ones where the plant already had this roof, else the cadastre's suggestion.",
+        "description": "Plane: {roof}. The figures are the plane's current ones where the plant already has it, else the cadastre's suggestion.",
         "data": {
           "label": "Name of the plane",
           "kwp": "Peak power of the plane (kWp)",
@@ -79,7 +79,8 @@
     "error": {
       "cannot_connect": "The federal geo service could not be reached. Check the internet connection and try again.",
       "no_match": "No address matches the text. Try street and place, or move the marker instead.",
-      "pick_one": "Tick at least one plane, or the pencil for a plane entered by hand."
+      "pick_one": "Tick at least one plane, or the last entry to enter one by hand.",
+      "meter_in_use": "This meter already calibrates the entry \"{entry}\". A meter has to count the modules of exactly one entry: pick the meter that counts this plant alone, or leave the field empty."
     },
     "abort": {
       "already_configured": "A plant with this name is already set up at this place. Use its Reconfigure to change the planes, or give a second inverter another name.",
@@ -90,10 +91,10 @@
   "options": {
     "step": {
       "init": {
-        "title": "Which plane?",
-        "description": "The plant's planes, and Σ for the plant as a whole (inverter limit). Pick what you want to change. To add or remove planes, or move the plant, use Reconfigure in the entry's menu.",
+        "title": "What do you want to change?",
+        "description": "A plane for its figures (peak power, orientation, tilt, losses, damping), or the whole plant for the inverter limit, the yield meter and the corrections. To add or remove planes, or move the plant, use Reconfigure in the entry's menu.",
         "data": {
-          "plane": "Plane"
+          "plane": "Plane or whole plant"
         }
       },
       "plane": {
@@ -122,12 +123,27 @@
           "terrain_horizon": "Reads the horizon of the place once from the swisstopo elevation model. While the sun stands behind a mountain or a valley side, only the diffuse light counts. Bare terrain only: trees and buildings are not in the model.",
           "snow": "Follows the snow from the forecast: precipitation that falls as snow covers the modules, and they produce nothing until it has slid off or melted. Steep modules clear sooner than flat ones. An estimate; with a yield meter, modules that produce although the forecast shows them covered are set free at once.",
           "station_correction": "While the sun is up, the radiation the nearest MeteoSwiss measurement station recorded in the last hour is compared with the forecast for the same time. The difference corrects the current hour and, fading out, the next three. Only with a station within 25 km at a similar height; costs one small request every 15 minutes during the day.",
-          "yield_sensor": "An energy sensor that counts what the whole plant produces (total or daily counter, Wh, kWh or MWh). Every hour the forecast is compared with what was counted, and a factor per place of the sun in the sky is learned: shading by trees or buildings, soiling, whatever the model does not know. It follows the sun and not the clock, so what was learned holds when the days grow longer or shorter. Hours that are over count in today's figure with what the meter counted. Hours with snow on the modules are left out. With the meter you also see how accurate the forecast was over the last 7 and 30 days. Leave empty to switch the self-calibration off; another meter or changed figures of a plane start the learning anew."
+          "yield_sensor": "An energy sensor that counts what the modules of this entry produce, all of them and no others (total or daily counter, Wh, kWh or MWh). Not a meter that also counts a second plant, and not the same meter in two entries. Every hour the forecast is compared with what was counted, and a factor per place of the sun in the sky is learned: shading by trees or buildings, soiling, whatever the model does not know. It follows the sun and not the clock, so what was learned holds when the days grow longer or shorter. Hours that are over count in today's figure with what the meter counted. Hours with snow on the modules are left out. With the meter you also see how accurate the forecast was over the last 7 and 30 days. Leave empty to switch the self-calibration off; another meter or changed figures of a plane start the learning anew."
         }
       }
     },
+    "error": {
+      "meter_in_use": "This meter already calibrates the entry \"{entry}\". A meter has to count the modules of exactly one entry: pick the meter that counts this plant alone, or leave the field empty."
+    },
     "abort": {
       "no_planes": "This plant has no planes; set it up again."
+    }
+  },
+  "selector": {
+    "roofs": {
+      "options": {
+        "manual": "Add a new plane by hand"
+      }
+    },
+    "plane": {
+      "options": {
+        "plant": "Whole plant (inverter, yield meter, corrections)"
+      }
     }
   },
   "entity": {

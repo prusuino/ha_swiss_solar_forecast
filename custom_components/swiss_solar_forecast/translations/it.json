@@ -12,7 +12,7 @@
           "yield_sensor": "Contatore di produzione (facoltativo)"
         },
         "data_description": {
-          "yield_sensor": "Un sensore di energia che conta ciò che produce l'intero impianto (contatore totale o giornaliero, Wh, kWh o MWh). Con esso la previsione si corregge da sola: apprende ciò che il modello non può sapere (ombreggiamento da alberi o edifici, sporco), il valore di oggi riprende le ore già contate e vedete quanto è stata precisa la previsione. Si può impostare o modificare più tardi sotto «Configura»."
+          "yield_sensor": "Un sensore di energia che conta ciò che producono i moduli di questa voce, tutti e nessun altro (contatore totale o giornaliero, Wh, kWh o MWh). Non un contatore che conta anche un secondo impianto, e non lo stesso contatore in due voci. Con esso la previsione si corregge da sola: apprende ciò che il modello non può sapere (ombreggiamento da alberi o edifici, sporco), il valore di oggi riprende le ore già contate e vedete quanto è stata precisa la previsione. Si può impostare o modificare più tardi sotto «Configura»."
         }
       },
       "address": {
@@ -24,7 +24,7 @@
       },
       "roofs": {
         "title": "Falde del tetto",
-        "description": "{count} falda/e a {place} nel catasto Tettosolare, la più grande per prima: orientamento, inclinazione, superficie, classe di idoneità (1 bassa … 5 ottima) e resa elettrica a lungo termine dell'intera falda. Spuntate ogni falda con moduli. L'ultima voce (✎) aggiunge una falda inserita a mano, per un tetto sconosciuto al catasto, un garage su un altro edificio o un impianto a terra; spuntatela insieme alle altre se servono entrambe.",
+        "description": "{count} falda/e a {place} nel catasto Tettosolare, la più grande per prima: orientamento, inclinazione, superficie, classe di idoneità (1 bassa … 5 ottima) e resa elettrica a lungo termine dell'intera falda. Spuntate ogni falda con moduli. L'ultima voce, «Aggiungere una nuova falda a mano», serve per un tetto sconosciuto al catasto, un garage su un altro edificio o un impianto a terra: orientamento e inclinazione li inserite voi. Spuntatela insieme alle altre se servono entrambe; altre falde a mano si aggiungono più tardi con Riconfigura, una per volta.",
         "data": {
           "roofs": "Falde con moduli"
         }
@@ -43,7 +43,7 @@
       },
       "reconfigure": {
         "title": "Spostare l'impianto o cambiare le falde",
-        "description": "Spostate il marcatore o inserite un altro indirizzo; le falde presenti vengono elencate subito dopo (quelle attuali sono già spuntate), poi i valori di ogni falda precompilati con quelli attuali. La voce mantiene le entità, i loro ID e la cronologia.",
+        "description": "Spostate il marcatore o inserite un altro indirizzo; le falde presenti vengono elencate subito dopo, insieme alle falde che l'impianto ha già (tutte spuntate, comprese quelle inserite a mano), poi i valori di ogni falda precompilati con quelli attuali. La voce mantiene le entità, i loro ID e la cronologia.",
         "data": {
           "location": "Posizione (marcatore sul tetto)",
           "search": "Indirizzo (facoltativo; sostituisce il marcatore)"
@@ -58,14 +58,14 @@
       },
       "reconfigure_roofs": {
         "title": "Falde del tetto",
-        "description": "{count} falda/e a {place} nel catasto Tettosolare, la più grande per prima. Spuntate ogni falda con moduli; l'ultima voce (✎) aggiunge una falda inserita a mano.",
+        "description": "{count} falda/e a {place} nel catasto Tettosolare, la più grande per prima. Seguono le falde dell'impianto che il catasto qui non elenca, comprese quelle inserite a mano, con nome, potenza e orientamento. Tutto ciò che l'impianto ha oggi è spuntato: lasciate la spunta per mantenere una falda, toglietela per rimuoverla. L'ultima voce aggiunge una nuova falda a mano; per più di una, ripetete Riconfigura.",
         "data": {
           "roofs": "Falde con moduli"
         }
       },
       "reconfigure_plane": {
         "title": "Falda {index} di {total}",
-        "description": "Tetto: {roof}. I valori sono quelli attuali della falda se l'impianto aveva già questo tetto, altrimenti il suggerimento del catasto.",
+        "description": "Falda: {roof}. I valori sono quelli attuali della falda se l'impianto l'ha già, altrimenti il suggerimento del catasto.",
         "data": {
           "label": "Nome della falda",
           "kwp": "Potenza di picco della falda (kWp)",
@@ -79,7 +79,8 @@
     "error": {
       "cannot_connect": "Il servizio geografico federale non ha risposto. Verificate la connessione internet e riprovate.",
       "no_match": "Nessun indirizzo corrisponde al testo. Provate con via e località, oppure spostate il marcatore.",
-      "pick_one": "Spuntate almeno una falda, o la matita per una falda inserita a mano."
+      "pick_one": "Spuntate almeno una falda, o l'ultima voce per inserirne una a mano.",
+      "meter_in_use": "Questo contatore calibra già la voce «{entry}». Un contatore deve contare i moduli di una sola voce: scegliete il contatore che conta solo questo impianto, oppure lasciate vuoto il campo."
     },
     "abort": {
       "already_configured": "In questo luogo è già configurato un impianto con questo nome. Modificate le sue falde con Riconfigura, o date un altro nome a un secondo inverter.",
@@ -90,10 +91,10 @@
   "options": {
     "step": {
       "init": {
-        "title": "Quale falda?",
-        "description": "Le falde dell'impianto, e Σ per l'intero impianto (limite dell'inverter). Scegliete cosa cambiare. Per aggiungere o togliere falde o spostare l'impianto, usate Riconfigura nel menu della voce.",
+        "title": "Cosa volete modificare?",
+        "description": "Una falda per i suoi valori (potenza, orientamento, inclinazione, perdite, smorzamento), oppure l'intero impianto per il limite dell'inverter, il contatore di produzione e le correzioni. Per aggiungere o togliere falde o spostare l'impianto, usate Riconfigura nel menu della voce.",
         "data": {
-          "plane": "Falda"
+          "plane": "Falda o intero impianto"
         }
       },
       "plane": {
@@ -122,12 +123,27 @@
           "terrain_horizon": "Legge una volta l'orizzonte del luogo dal modello altimetrico di swisstopo. Finché il sole si trova dietro una montagna o un fianco della valle, conta solo la luce diffusa. Solo terreno nudo: alberi ed edifici non sono nel modello.",
           "snow": "Segue la neve a partire dalla previsione: le precipitazioni che cadono come neve coprono i moduli, che non producono nulla finché non è scivolata via o si è sciolta. I moduli ripidi si liberano prima di quelli piani. Una stima; con un contatore di produzione, i moduli che producono benché la previsione li mostri coperti vengono liberati subito.",
           "station_correction": "Finché il sole è sopra l'orizzonte, la radiazione misurata nell'ultima ora dalla stazione di misura di MeteoSvizzera più vicina viene confrontata con la previsione per lo stesso periodo. Lo scarto corregge l'ora in corso e, attenuandosi, le tre successive. Solo con una stazione entro 25 km a un'altitudine simile; costa una piccola richiesta ogni 15 minuti durante il giorno.",
-          "yield_sensor": "Un sensore di energia che conta ciò che produce l'intero impianto (contatore totale o giornaliero, Wh, kWh o MWh). Ogni ora la previsione viene confrontata con la produzione contata e si apprende un fattore per ogni posizione del sole nel cielo: ombreggiamento da alberi o edifici, sporco, tutto ciò che il modello non conosce. Segue il sole e non l'orologio: ciò che è stato appreso vale anche quando le giornate si allungano o si accorciano. Le ore trascorse contano nel valore di oggi con ciò che il contatore ha contato. Le ore con neve sui moduli vengono tralasciate. Con il contatore vedete anche quanto è stata precisa la previsione negli ultimi 7 e 30 giorni. Lasciate vuoto per disattivare l'autocalibrazione; un altro contatore o valori modificati di una falda fanno ricominciare l'apprendimento."
+          "yield_sensor": "Un sensore di energia che conta ciò che producono i moduli di questa voce, tutti e nessun altro (contatore totale o giornaliero, Wh, kWh o MWh). Non un contatore che conta anche un secondo impianto, e non lo stesso contatore in due voci. Ogni ora la previsione viene confrontata con la produzione contata e si apprende un fattore per ogni posizione del sole nel cielo: ombreggiamento da alberi o edifici, sporco, tutto ciò che il modello non conosce. Segue il sole e non l'orologio: ciò che è stato appreso vale anche quando le giornate si allungano o si accorciano. Le ore trascorse contano nel valore di oggi con ciò che il contatore ha contato. Le ore con neve sui moduli vengono tralasciate. Con il contatore vedete anche quanto è stata precisa la previsione negli ultimi 7 e 30 giorni. Lasciate vuoto per disattivare l'autocalibrazione; un altro contatore o valori modificati di una falda fanno ricominciare l'apprendimento."
         }
       }
     },
+    "error": {
+      "meter_in_use": "Questo contatore calibra già la voce «{entry}». Un contatore deve contare i moduli di una sola voce: scegliete il contatore che conta solo questo impianto, oppure lasciate vuoto il campo."
+    },
     "abort": {
       "no_planes": "Questo impianto non ha falde; configuratelo di nuovo."
+    }
+  },
+  "selector": {
+    "roofs": {
+      "options": {
+        "manual": "Aggiungere una nuova falda a mano"
+      }
+    },
+    "plane": {
+      "options": {
+        "plant": "L'intero impianto (inverter, contatore di produzione, correzioni)"
+      }
     }
   },
   "entity": {

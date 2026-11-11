@@ -79,7 +79,7 @@ For every forecast hour the integration takes the global radiation on the horizo
 
 Two things happen around this chain:
 
-- **The hours just ahead follow the nearest station.** While the sun is up, the global radiation the nearest MeteoSwiss measurement station received in the last hour is set against what the model had forecast for the same ten-minute steps. The ratio (kept between 0.3 and 1.5) corrects the radiation of the running hour and, fading out, of the next three; what is taken away or added is direct light, the diffuse light stays. The nearer the station, the more its word counts: a station next door counts fully, one 15 km away half, and only stations within 25 km and within 300 m of the plant's height are asked at all. A station that falls silent is forgotten after 75 minutes. The sensor `…_station_correction` shows the ratio; switch the correction off under **Configure → Σ** if the station does not stand for your sky.
+- **The hours just ahead follow the nearest station.** While the sun is up, the global radiation the nearest MeteoSwiss measurement station received in the last hour is set against what the model had forecast for the same ten-minute steps. The ratio (kept between 0.3 and 1.5) corrects the radiation of the running hour and, fading out, of the next three; what is taken away or added is direct light, the diffuse light stays. The nearer the station, the more its word counts: a station next door counts fully, one 15 km away half, and only stations within 25 km and within 300 m of the plant's height are asked at all. A station that falls silent is forgotten after 75 minutes. The sensor `…_station_correction` shows the ratio; switch the correction off under **Configure → Whole plant** if the station does not stand for your sky.
 - **The hours that are over stay as they were.** Every model run computes the whole day again, the morning included — with weather that may never have come. An hour that has ended therefore keeps the value it ended with (kept for two days, across restarts). With a yield meter, the day's energy of the plant counts the finished hours with what the meter measured in them; the planes keep their forecast, since no meter tells which of them fell short, so on such a day the planes can add up to more or less than the plant.
 
 Should a run come without diffuse radiation, the diffuse share is estimated from the clearness index (Erbs). The attribute `diffuse_from_forecast` tells which case applies. Without a wind forecast a light breeze is assumed. The model knows the terrain and follows the snow, but it knows no trees, chimneys or neighbouring roofs: that is what the self-calibration learns from your meter. Without a meter, use the damping factor, or set up one entry per differently shaded part.
@@ -115,11 +115,11 @@ The sensors are plain numbers and timestamps, so the automation editor can use t
 
 **Settings → Devices & services → Add integration → Swiss Solar Forecast.**
 
-1. **Place.** A name for the plant, then your Home Assistant location pre-filled on the map: move the marker onto your roof, or type a street address (every address of Switzerland is known; a building without a street address is found by the marker). If the plant has an energy sensor — the total or daily counter of the inverter — name it here as the **yield meter**: the forecast then learns from the plant itself (see [Self-calibration](#self-calibration)). It can be named, changed or removed later as well.
-2. **Roof planes.** The planes of that building from the Sonnendach cadastre, largest first, with orientation, tilt, area, suitability class (1 low … 5 top) and the long-term yield. Tick every plane that carries modules. The pencil entry adds a plane the cadastre does not know (a garage on another building, a wrong outline, a ground-mounted plant): you then enter orientation and tilt yourself. Tick it together with the others if you need both.
+1. **Place.** A name for the plant, then your Home Assistant location pre-filled on the map: move the marker onto your roof, or type a street address (every address of Switzerland is known; a building without a street address is found by the marker). If the plant has an energy sensor — the total or daily counter of the inverter — name it here as the **yield meter**: the forecast then learns from the plant itself (see [Self-calibration](#self-calibration)). The meter has to count exactly the modules of this entry. It can be named, changed or removed later as well.
+2. **Roof planes.** The planes of that building from the Sonnendach cadastre, largest first, with orientation, tilt, area, suitability class (1 low … 5 top) and the long-term yield. Tick every plane that carries modules. The last entry, *Add a new plane by hand*, is for a plane the cadastre does not know (a garage on another building, a wrong outline, a ground-mounted plant): you then enter orientation and tilt yourself. Tick it together with the others if you need both; further planes by hand are added later with Reconfigure, one at a time.
 3. **Figures, plane by plane.** For each ticked plane a form with a name, orientation and tilt from the cadastre (correct them if you know better), the installed peak power in kWp (the form tells how much the cadastre's area would hold), the system losses (14 % is a usual figure for wiring, inverter, soiling and mismatch), the inverter's AC limit (0 for none) and the damping factor (1 to start with). The MeteoSwiss forecast point nearest to the place is chosen automatically.
 
-**Configure** (the entry's ⚙️) changes one plane's figures; **Reconfigure** (the entry's ⋮ menu) moves the plant or changes its planes, with the current figures pre-filled. Both keep the entities, their ids and history. A second plant at another place is a second entry.
+**Configure** (the entry's ⚙️) changes one plane's figures or, with *Whole plant*, the inverter limit, the yield meter and the corrections. **Reconfigure** (the entry's ⋮ menu) moves the plant or adds and removes planes: its list holds every plane the plant has, the ones entered by hand with their name, all of them ticked — leave a tick to keep the plane, remove it to remove the plane — and each plane's form comes with its current figures. Both keep the entities, their ids and history. A second plant at another place is a second entry.
 
 ### Terrain horizon
 
@@ -130,11 +130,11 @@ For every forecast hour the sun is looked at every ten minutes. While it stands 
 - The elevation model is the **bare terrain**: mountains, hills, valley sides. Trees and buildings are not in it — that is the job of the self-calibration.
 - The MeteoSwiss radiation already contains the weather, but not the shadow of the ridge behind your house: the weather model sees the terrain in cells of a kilometre.
 - The sensor `…_terrain_horizon` shows the highest angle and, as an attribute, the whole profile. Until the terrain is read (or while the geo API cannot be reached) the forecast simply runs without it; the next try follows by itself.
-- To switch it off: the ⚙️ of the entry, **Configure → Σ** (the whole plant).
+- To switch it off: the ⚙️ of the entry, **Configure → Whole plant**.
 
 ### Self-calibration
 
-Name the yield meter at the setup, or open the ⚙️ of the entry, **Configure → Σ**, and choose under *Yield meter* the energy sensor that counts what the **whole plant** produces: the total or daily counter of the inverter or of a meter, in Wh, kWh or MWh. From then on:
+Name the yield meter at the setup, or open the ⚙️ of the entry, **Configure → Whole plant**, and choose under *Yield meter* the energy sensor that counts what the **modules of this entry** produce, all of them and no others: the total or daily counter of the inverter or of a meter, in Wh, kWh or MWh. If one meter counts two plants, put all the modules it counts into one entry; the same meter cannot be named in two entries, since each would learn from the yield of both. From then on:
 
 - At every full hour the integration reads the meter and compares its increase with what the model had forecast for that hour (before any calibration).
 - It keeps, per part of the sky — the sun's direction in steps of 15° and its height in steps of 10° — a running sum of counted and forecast energy in which older days fade (a memory of about two weeks), and from it a factor for that part of the sky. Every coming hour is multiplied with the factor of where the sun will stand in it and clipped at the inverter limit again. A tree shades the roof when the sun is behind it, whatever the clock says: what was learned keeps fitting as the days grow shorter or longer.
@@ -170,7 +170,7 @@ Good to know:
 
 - All of this is an **estimate**. The thresholds come from the literature (the sliding after Marion et al., the model NREL's SAM uses) and are not fitted to your roof: frameless modules, a snow guard at the eaves or a roof the wind sweeps behave differently. Expect the forecast to be right about *whether* snow lies on the modules more often than about the hour it goes.
 - It follows the forecast, not a measurement: snowfall the forecast missed is missed here too, and so is snow that fell before the integration was set up.
-- To switch it off: the ⚙️ of the entry, **Configure → Σ**.
+- To switch it off: the ⚙️ of the entry, **Configure → Whole plant**.
 
 ### Forecast accuracy
 

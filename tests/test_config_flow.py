@@ -12,7 +12,7 @@ from homeassistant.data_entry_flow import FlowResultType
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.swiss_solar_forecast.const import CONF_ADDRESS, CONF_PLANES, CONF_POINT_ID, CONF_POINT_NAME, DOMAIN
-from custom_components.swiss_solar_forecast.sonnendach import Address, Roof
+from custom_components.swiss_solar_forecast.sonnendach import Address, Roof, SonnendachError
 
 from .conftest import CHUR_STATION, SAENTIS
 
@@ -297,3 +297,180 @@ async def test_options_terrain_horizon_and_yield_meter(hass: HomeAssistant, enab
         result = await hass.config_entries.options.async_configure(result["flow_id"], {"plant_inverter_kw": 12.0, **switches})
         assert result["type"] is FlowResultType.CREATE_ENTRY
         assert entry.options == {"plant_inverter_kw": 12.0, **switches}
+
+
+# a plane entered by hand: no roof of the cadastre behind it, and an inverter limit the forms do not ask for
+CARPORT = {"label": "Carport", "kwp": 2.0, "azimuth": 200.0, "tilt": 10.0, "losses": 14.0, "inverter_kw": 1.5, "damping": 0.95}
+WITH_CARPORT = [PLANES[0], CARPORT, PLANES[1]]
+
+
+def _entry_with(planes: list[dict], **kwargs) -> MockConfigEntry:
+    entry = _entry()
+    return MockConfigEntry(domain=DOMAIN, unique_id=entry.unique_id, title=entry.title, data={**entry.data, "planes": planes}, **kwargs)
+
+
+def _roof_options(result) -> dict[str, str]:
+    field = next(v for k, v in result["data_schema"].schema.items() if str(k) == "roofs")
+    return {o["value"]: o["label"] for o in field.config["options"]}
+
+
+def _shown(result) -> dict:
+    """What a form shows: the default of a field, or the value suggested for an optional one."""
+    shown = {}
+    for key in result["data_schema"].schema:
+        if callable(getattr(key, "default", None)):
+            shown[str(key)] = key.default()
+        elif key.description and "suggested_value" in key.description:
+            shown[str(key)] = key.description["suggested_value"]
+    return shown
+
+
+async def _reconfigure_to_roofs(hass: HomeAssistant, entry: MockConfigEntry):
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_RECONFIGURE, "entry_id": entry.entry_id})
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {"location": {"latitude": 47.37, "longitude": 8.54}, "search": ""})
+    assert result["step_id"] == "reconfigure_roofs"
+    return result
+
+
+async def _confirm_planes(hass: HomeAssistant, result, answers: dict[int, dict] | None = None):
+    """Confirm every plane form with what it suggests, or with the answer given for that position."""
+    index = 0
+    while result["type"] is FlowResultType.FORM:
+        assert result["step_id"] == "reconfigure_plane"
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], (answers or {}).get(index) or _defaults(result))
+        index += 1
+    return result
+
+
+async def test_reconfigure_keeps_a_plane_entered_by_hand(hass: HomeAssistant, enable_custom_integrations, fake_geo) -> None:
+    """The plane entered by hand is in the list with its name and ticked:
+    confirming the forms as they stand changes nothing, whatever the order
+    the ticks arrive in."""
+    entry = _entry_with(WITH_CARPORT)
+    entry.add_to_hass(hass)
+    with patch("custom_components.swiss_solar_forecast.async_setup_entry", return_value=True):
+        result = await _reconfigure_to_roofs(hass, entry)
+        options = _roof_options(result)
+        assert list(options) == ["5001", "5002", "keep:1", "manual"]
+        assert options["keep:1"].startswith("Carport · 2 kWp · ") and options["keep:1"].endswith("200° / 10°")
+        assert _defaults(result)["roofs"] == ["5001", "5002", "keep:1"]
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], {"roofs": ["keep:1", "5002", "5001"]})
+        assert result["description_placeholders"]["total"] == "3"
+        assert _defaults(result)["label"] == "South-east"  # the plant's order, not the order of the ticks
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], _defaults(result))
+        d = _defaults(result)
+        assert d["label"] == "Carport" and d["kwp"] == 2.0 and d["azimuth"] == 200.0 and d["tilt"] == 10.0 and d["damping"] == 0.95
+        assert result["description_placeholders"]["roof"].startswith("Carport")
+        result = await _confirm_planes(hass, result)
+    assert result["reason"] == "reconfigure_successful"
+    assert entry.data[CONF_PLANES] == WITH_CARPORT  # the inverter limit of the carport included
+
+
+async def test_reconfigure_adds_a_second_plane_by_hand(hass: HomeAssistant, enable_custom_integrations, fake_geo) -> None:
+    """New planes come after the ones the plant has, so plane 1 and 2 stay
+    plane 1 and 2 with their entities."""
+    entry = _entry_with([PLANES[0], CARPORT])
+    entry.add_to_hass(hass)
+    with patch("custom_components.swiss_solar_forecast.async_setup_entry", return_value=True):
+        result = await _reconfigure_to_roofs(hass, entry)
+        assert _defaults(result)["roofs"] == ["5001", "keep:1"]
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], {"roofs": ["manual", "5002", "keep:1", "5001"]})
+        garage = {"label": "Garage", "kwp": 4.0, "azimuth": 140, "tilt": 15, **FIGURES}
+        result = await _confirm_planes(hass, result, {3: garage})
+    assert result["reason"] == "reconfigure_successful"
+    planes = entry.data[CONF_PLANES]
+    assert [p["label"] for p in planes] == ["South-east", "Carport", "NE 50° / 23°", "Garage"]
+    assert planes[:2] == [PLANES[0], CARPORT]
+    assert planes[2]["roof_id"] == 5002 and "roof_id" not in planes[3]
+
+
+async def test_reconfigure_removes_the_plane_that_is_unticked(hass: HomeAssistant, enable_custom_integrations, fake_geo) -> None:
+    entry = _entry_with(WITH_CARPORT)
+    entry.add_to_hass(hass)
+    with patch("custom_components.swiss_solar_forecast.async_setup_entry", return_value=True):
+        result = await _reconfigure_to_roofs(hass, entry)
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], {"roofs": ["5001", "5002"]})
+        result = await _confirm_planes(hass, result)
+    assert result["reason"] == "reconfigure_successful"
+    assert entry.data[CONF_PLANES] == PLANES
+
+
+async def test_reconfigure_without_the_cadastre_keeps_every_plane(hass: HomeAssistant, enable_custom_integrations, fake_points) -> None:
+    """The cadastre does not answer: the plant's planes are listed by
+    their names and keep their roof."""
+    entry = _entry_with(WITH_CARPORT)
+    entry.add_to_hass(hass)
+    with (
+        patch("custom_components.swiss_solar_forecast.config_flow.async_roofs_at", side_effect=SonnendachError("down")),
+        patch("custom_components.swiss_solar_forecast.async_setup_entry", return_value=True),
+    ):
+        result = await _reconfigure_to_roofs(hass, entry)
+        assert list(_roof_options(result)) == ["keep:0", "keep:1", "keep:2", "manual"]
+        assert _defaults(result)["roofs"] == ["keep:0", "keep:1", "keep:2"]
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], {"roofs": _defaults(result)["roofs"]})
+        result = await _confirm_planes(hass, result)
+    assert result["reason"] == "reconfigure_successful"
+    assert entry.data[CONF_PLANES] == WITH_CARPORT
+
+
+async def test_two_planes_on_one_roof_are_both_kept(hass: HomeAssistant, enable_custom_integrations, fake_geo) -> None:
+    """Two strings on the same roof of the cadastre: the roof stands for
+    the first, the second is listed by its name."""
+    second = {**PLANES[0], "label": "South-east, upper row", "kwp": 3.0}
+    entry = _entry_with([PLANES[0], second])
+    entry.add_to_hass(hass)
+    with patch("custom_components.swiss_solar_forecast.async_setup_entry", return_value=True):
+        result = await _reconfigure_to_roofs(hass, entry)
+        assert list(_roof_options(result)) == ["5001", "5002", "keep:1", "manual"]
+        assert _defaults(result)["roofs"] == ["5001", "keep:1"]
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], {"roofs": ["5001", "keep:1"]})
+        result = await _confirm_planes(hass, result)
+    assert result["reason"] == "reconfigure_successful"
+    assert entry.data[CONF_PLANES] == [PLANES[0], second]
+
+
+async def test_a_meter_serves_one_entry_at_the_setup(hass: HomeAssistant, enable_custom_integrations, fake_points) -> None:
+    """Two entries calibrating against one meter would each learn from
+    the yield of both: the form says so and keeps what was entered."""
+    other = _entry_with(PLANES, options={"yield_sensor": "sensor.pv_total"})
+    other.add_to_hass(hass)
+    place = {"name": "Field", "location": {"latitude": 46.95, "longitude": 7.45}, "search": "", "plant_inverter_kw": 5.0}
+    with patch("custom_components.swiss_solar_forecast.config_flow.async_roofs_at", return_value=[]):
+        result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], {**place, "yield_sensor": "sensor.pv_total"})
+        assert result["type"] is FlowResultType.FORM and result["step_id"] == "user"
+        assert result["errors"] == {"yield_sensor": "meter_in_use"}
+        assert result["description_placeholders"] == {"entry": "Our roof"}
+        d = _shown(result)
+        assert d["name"] == "Field" and d["location"] == {"latitude": 46.95, "longitude": 7.45} and d["plant_inverter_kw"] == 5.0
+        assert d["yield_sensor"] == "sensor.pv_total"
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], {**place, "yield_sensor": "sensor.pv_field"})
+        assert result["step_id"] == "roofs"
+
+
+async def test_a_meter_serves_one_entry_in_the_options(hass: HomeAssistant, enable_custom_integrations) -> None:
+    first = _entry_with(PLANES, options={"yield_sensor": "sensor.pv_total"})
+    first.add_to_hass(hass)
+    second = MockConfigEntry(domain=DOMAIN, unique_id="46.9500,7.4500:field", title="Field", data={**first.data, "name": "Field"})
+    second.add_to_hass(hass)
+    figures = {"plant_inverter_kw": 9.0, "terrain_horizon": False, "snow": True, "station_correction": True}
+    with patch("custom_components.swiss_solar_forecast.async_setup_entry", return_value=True):
+        result = await hass.config_entries.options.async_init(second.entry_id)
+        result = await hass.config_entries.options.async_configure(result["flow_id"], {"plane": "plant"})
+        result = await hass.config_entries.options.async_configure(result["flow_id"], {**figures, "yield_sensor": "sensor.pv_total"})
+        assert result["type"] is FlowResultType.FORM and result["step_id"] == "plant"
+        assert result["errors"] == {"yield_sensor": "meter_in_use"}
+        assert result["description_placeholders"] == {"entry": "Our roof"}
+        d = _shown(result)
+        assert d["plant_inverter_kw"] == 9.0 and d["terrain_horizon"] is False  # what was entered stays in the form
+        assert d["yield_sensor"] == "sensor.pv_total"
+        assert second.options == {}
+        result = await hass.config_entries.options.async_configure(result["flow_id"], {**figures, "yield_sensor": "sensor.pv_field"})
+        assert result["type"] is FlowResultType.CREATE_ENTRY
+        assert second.options == {**figures, "yield_sensor": "sensor.pv_field"}
+        # an entry's own meter is no conflict
+        result = await hass.config_entries.options.async_init(first.entry_id)
+        result = await hass.config_entries.options.async_configure(result["flow_id"], {"plane": "plant"})
+        result = await hass.config_entries.options.async_configure(result["flow_id"], {**figures, "yield_sensor": "sensor.pv_total"})
+        assert result["type"] is FlowResultType.CREATE_ENTRY
+        assert first.options["yield_sensor"] == "sensor.pv_total"

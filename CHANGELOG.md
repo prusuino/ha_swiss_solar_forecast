@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.1 — 2026-11-11
+
+- **Fix: Reconfigure no longer drops the planes entered by hand.** The list of planes showed the roofs of the cadastre only, and of the plant's own planes only those were ticked. A plane entered by hand — a garage, a ground-mounted row — was neither listed nor ticked, so it left the plant without a word when the forms were clicked through, and with a yield meter the calibration then learned against modules that were no longer in the forecast. The list now holds every plane the plant has, the ones entered by hand with their name, peak power and orientation, all of them ticked: leave a tick to keep the plane, remove it to remove the plane. **If you have used Reconfigure on a plant with a plane entered by hand, check that the plane is still there** (the entry's ⚙️ lists the planes) and add it again if not.
+- Reconfigure keeps the order of the planes whatever the order of the ticks, with new planes after the existing ones, so `plane1`, `plane2`, … stay the planes they were. It also keeps the planes when the cadastre does not answer, two planes on the same roof, and a plane's own inverter limit.
+- **Names instead of signs.** The list entries «✎» and «Σ» are now called *Add a new plane by hand* and *Whole plant (inverter, yield meter, corrections)*, in all four languages, and the texts of the forms say what each choice does.
+- **One meter, one entry.** The yield meter has to count exactly the modules of its entry; the field now says so. Naming a meter that already calibrates another entry is refused in the form, with the name of that entry — two entries on one meter would each learn from the yield of both.
+
 ## 0.4.0 — 2026-11-11
 
 - **The hours that are over stay as they were.** Every model run computes the whole day again, the morning included, so the day's total kept moving until the evening and could end far from what the day had brought. An hour that has ended now keeps the value it ended with. With a yield meter, the plant's energy of the day counts the finished hours with what the meter measured in them (attribute `measured_hours`); the planes keep their forecast.
