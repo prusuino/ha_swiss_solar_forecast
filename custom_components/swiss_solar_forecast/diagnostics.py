@@ -1,8 +1,9 @@
 """Diagnostics download: the planes, the run, what the reads cost and the
 hourly result, the terrain horizon in brief, the snow as it is followed,
-what the calibration learned and how accurate the forecast was, with the
-place redacted (the horizon's full profile is left out: it is a
-fingerprint of the place)."""
+the correction from a measurement station, what the calibration learned
+and how accurate the forecast was day by day, with the place redacted
+(the horizon's full profile and the station's name are left out: they
+tell where the plant is)."""
 from __future__ import annotations
 
 from dataclasses import asdict
@@ -12,6 +13,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
+from .calibration import BINS_BY
 from .const import CONF_ADDRESS, CONF_POINT_ID, CONF_POINT_LAT, CONF_POINT_LON, CONF_POINT_NAME, CONF_YIELD_SENSOR, USER_AGENT
 from .coordinator import SolarForecastCoordinator
 
@@ -47,8 +49,10 @@ def _calibration(coordinator: SolarForecastCoordinator | None) -> dict[str, Any]
         return None
     return {
         "overall": round(calibration.overall, 3),
-        "factors_utc": calibration.factors(),
-        "bins_utc": {hour: [round(v, 1) for v in values] for hour, values in sorted(calibration.bins.items())},
+        "bins_by": BINS_BY,  # the sun's bearing/height in degrees, the lower edges of each part of the sky
+        "factors": calibration.factors(),
+        # per part of the sky: Wh counted, Wh forecast, hours (older ones fade)
+        "bins": {key: [round(v, 1) for v in calibration.bins[key]] for key in calibration.factors()},
         "samples": calibration.samples,
         "last_sample": calibration.last_sample,
         "reading_time": calibration.reading_time,
@@ -80,9 +84,39 @@ def _accuracy(coordinator: SolarForecastCoordinator | None) -> dict[str, Any] | 
     return {
         "7_days": accuracy.figures(today, 7),
         "30_days": accuracy.figures(today, 30),
+        "days": accuracy.daily(today, 30),
         "days_kept": len(accuracy.days),
         "open_hours": len(accuracy.pending),
     }
+
+
+def _station(coordinator: SolarForecastCoordinator | None) -> dict[str, Any] | None:
+    if coordinator is None:
+        return None
+    station = coordinator.station
+    found = coordinator.correction
+    height = station.get("height")
+    return {
+        "enabled": coordinator.use_station,
+        "found": bool(station),
+        "distance_km": station.get("distance_km"),
+        "height_difference_m": None if height is None or coordinator.height is None else round(height - coordinator.height),
+        "correction": None
+        if found is None
+        else {
+            "ratio": found.ratio,
+            "measured_w_m2": found.measured,
+            "forecast_w_m2": found.expected,
+            "measured_at": found.measured_at.isoformat(),
+            "trust": found.trust,
+        },
+    }
+
+
+def _finished_hours(coordinator: SolarForecastCoordinator | None) -> dict[str, Any] | None:
+    if coordinator is None:
+        return None
+    return {"kept": len(coordinator.frozen.hours), "measured": len(coordinator.frozen.measured)}
 
 
 async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]:
@@ -100,6 +134,8 @@ async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry: ConfigE
         "calibration": _calibration(coordinator),
         "accuracy": _accuracy(coordinator),
         "snow": _snow(coordinator),
+        "station_correction": _station(coordinator),
+        "finished_hours": _finished_hours(coordinator),
         "planes": [{"label": p.label, "has_roof": p.has_roof, **asdict(p.plane)} for p in coordinator.planes] if coordinator else None,
         "forecast": {
             "loaded": coordinator is not None,

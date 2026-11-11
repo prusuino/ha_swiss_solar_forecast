@@ -112,6 +112,26 @@ class Accuracy:
             "measured_kwh": round(measured / 1000.0, 2),
         }
 
+    def daily(self, today: date, days: int) -> list[dict[str, float | int | str | None]]:
+        """The complete days among the `days` before `today`, a row each, oldest first."""
+        first = (today - timedelta(days=days)).isoformat()
+        last = today.isoformat()
+        rows: list[dict[str, float | int | str | None]] = []
+        for day, sums in sorted(self.days.items()):
+            if not first <= day < last or sums[_HOURS] < HOURS_COMPLETE:
+                continue
+            rows.append(
+                {
+                    "date": day,
+                    "measured_kwh": round(sums[_MEASURED] / 1000.0, 2),
+                    "forecast_kwh": round(sums[_FORECAST] / 1000.0, 2),
+                    "day_ahead_kwh": round(sums[_AHEAD] / 1000.0, 2) if sums[_AHEAD_HOURS] >= HOURS_COMPLETE else None,
+                    "hourly_error_kwh": round(sums[_HOUR_ERROR] / 1000.0, 2),
+                    "hours": int(sums[_HOURS]),
+                }
+            )
+        return rows
+
     # ---------------------------------------------------------- persistence
 
     def as_dict(self) -> dict:

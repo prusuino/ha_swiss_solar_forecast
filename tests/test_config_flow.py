@@ -116,6 +116,22 @@ async def test_nothing_ticked_and_no_cadastre(hass: HomeAssistant, enable_custom
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"][CONF_POINT_NAME] == "Bern"
     assert result["data"][CONF_PLANES][0]["label"] == "S 180° / 30°"
+    assert result["options"] == {}  # no yield meter named
+
+
+async def test_the_yield_meter_is_asked_for_at_once(hass: HomeAssistant, enable_custom_integrations, fake_points) -> None:
+    with patch("custom_components.swiss_solar_forecast.config_flow.async_roofs_at", return_value=[]):
+        result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
+        assert "yield_sensor" in {str(k) for k in result["data_schema"].schema}
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"name": "Field", "location": {"latitude": 46.95, "longitude": 7.45}, "search": "", "yield_sensor": "sensor.pv_total"}
+        )
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], {"roofs": ["manual"]})
+        with patch("custom_components.swiss_solar_forecast.async_setup_entry", return_value=True):
+            result = await hass.config_entries.flow.async_configure(result["flow_id"], {"label": "", "kwp": 10, "azimuth": 180, "tilt": 30, **FIGURES})
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    # the meter is an option: it can be changed or taken out later without setting the plant up again
+    assert result["options"] == {"yield_sensor": "sensor.pv_total"} and "yield_sensor" not in result["data"]
 
 
 @pytest.mark.parametrize(
@@ -267,15 +283,17 @@ async def test_options_terrain_horizon_and_yield_meter(hass: HomeAssistant, enab
         result = await hass.config_entries.options.async_init(entry.entry_id)
         result = await hass.config_entries.options.async_configure(result["flow_id"], {"plane": "plant"})
         assert result["step_id"] == "plant"
-        assert {"plant_inverter_kw", "terrain_horizon", "snow", "yield_sensor"} == {str(k) for k in result["data_schema"].schema}
+        assert {"plant_inverter_kw", "terrain_horizon", "snow", "station_correction", "yield_sensor"} == {str(k) for k in result["data_schema"].schema}
+        switches = {"terrain_horizon": False, "snow": False, "station_correction": False}
         result = await hass.config_entries.options.async_configure(
-            result["flow_id"], {"plant_inverter_kw": 12.0, "terrain_horizon": False, "snow": False, "yield_sensor": "sensor.pv_total"}
+            result["flow_id"], {"plant_inverter_kw": 12.0, **switches, "yield_sensor": "sensor.pv_total"}
         )
         assert result["type"] is FlowResultType.CREATE_ENTRY
-        assert entry.options == {"plant_inverter_kw": 12.0, "terrain_horizon": False, "snow": False, "yield_sensor": "sensor.pv_total"}
-        # the meter is taken out again, the horizon and the snow are switched back on
+        assert entry.options == {"plant_inverter_kw": 12.0, **switches, "yield_sensor": "sensor.pv_total"}
+        # the meter is taken out again, the horizon, the snow and the station are switched back on
+        switches = {"terrain_horizon": True, "snow": True, "station_correction": True}
         result = await hass.config_entries.options.async_init(entry.entry_id)
         result = await hass.config_entries.options.async_configure(result["flow_id"], {"plane": "plant"})
-        result = await hass.config_entries.options.async_configure(result["flow_id"], {"plant_inverter_kw": 12.0, "terrain_horizon": True, "snow": True})
+        result = await hass.config_entries.options.async_configure(result["flow_id"], {"plant_inverter_kw": 12.0, **switches})
         assert result["type"] is FlowResultType.CREATE_ENTRY
-        assert entry.options == {"plant_inverter_kw": 12.0, "terrain_horizon": True, "snow": True}
+        assert entry.options == {"plant_inverter_kw": 12.0, **switches}

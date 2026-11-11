@@ -1,12 +1,13 @@
 """Sensors of the plant (the planes' sum) and of every plane: energy of
 today, tomorrow and the rest of today, power now and next hour, today's
 peak, the cadastre's typical day, the snow on the modules, and diagnostics
-about the run, the traffic, the terrain horizon, the self-calibration and
-how accurate the forecast was."""
+about the run, the traffic, the terrain horizon, the correction from a
+measurement station, the self-calibration and how accurate the forecast
+was."""
 from __future__ import annotations
 
 from calendar import monthrange
-from datetime import UTC, datetime, time, timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorStateClass
@@ -43,9 +44,10 @@ _META: dict[str, tuple[SensorDeviceClass | None, str | None, SensorStateClass | 
     "run": (SensorDeviceClass.TIMESTAMP, None, None, False, EntityCategory.DIAGNOSTIC),
     "requests_today": (None, None, SensorStateClass.TOTAL, False, EntityCategory.DIAGNOSTIC),
     "bytes_today": (SensorDeviceClass.DATA_SIZE, "B", SensorStateClass.TOTAL, False, EntityCategory.DIAGNOSTIC),
-    # only with the snow model / the terrain horizon switched on / with a yield meter set
+    # only with the snow model / the terrain horizon / the station correction switched on / with a yield meter set
     "snow_cover": (None, "%", SensorStateClass.MEASUREMENT, True, None),
     "terrain_horizon": (None, "°", SensorStateClass.MEASUREMENT, True, EntityCategory.DIAGNOSTIC),
+    "station_correction": (None, "%", SensorStateClass.MEASUREMENT, True, EntityCategory.DIAGNOSTIC),
     "calibration_factor": (None, None, SensorStateClass.MEASUREMENT, True, EntityCategory.DIAGNOSTIC),
     "accuracy_7_days": (None, "%", SensorStateClass.MEASUREMENT, True, EntityCategory.DIAGNOSTIC),
     "accuracy_30_days": (None, "%", SensorStateClass.MEASUREMENT, True, EntityCategory.DIAGNOSTIC),
@@ -64,6 +66,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: SolarForecastConfigEntry
     optional = {
         "snow_cover": coordinator.use_snow,
         "terrain_horizon": coordinator.use_horizon,
+        "station_correction": coordinator.use_station,
         "calibration_factor": coordinator.calibration is not None,
         "accuracy_7_days": coordinator.accuracy is not None,
         "accuracy_30_days": coordinator.accuracy is not None,
@@ -165,7 +168,7 @@ class _Base(CoordinatorEntity[SolarForecastCoordinator], SensorEntity):
             self._attr_suggested_display_precision = 2
         elif key in _ACCURACY_DAYS:
             self._attr_suggested_display_precision = 1
-        elif key == "snow_cover":
+        elif key in ("snow_cover", "station_correction"):
             self._attr_suggested_display_precision = 0
 
     @property
@@ -192,6 +195,10 @@ class PlantSensor(_Base):
         if self._key == "terrain_horizon":
             horizon = self.coordinator.horizon
             return None if horizon is None else round(horizon.highest[0], 1)
+        if self._key == "station_correction":
+            # what the station measured in the last hour, in percent of what was forecast for it
+            found = self.coordinator.correction
+            return None if found is None else round(found.ratio * 100)
         if self._key == "calibration_factor":
             calibration = self.coordinator.calibration
             return None if calibration is None else round(calibration.overall, 3)
@@ -223,6 +230,9 @@ class PlantSensor(_Base):
                 "diffuse_from_forecast": snap.diffuse_forecast,
                 "terrain_horizon": self.coordinator.horizon is not None,
                 "calibrated": self.coordinator.calibration is not None and self.coordinator.calibration.samples > 0,
+                # today's hours that are over and count with what the yield meter counted in them
+                "measured_hours": sum(1 for start in snap.plant.measured if dt_util.as_local(start).date() == day0),
+                "station_correction": self.coordinator.correction is not None,
             }
         if self._key == "terrain_horizon":
             horizon = self.coordinator.horizon
@@ -239,15 +249,34 @@ class PlantSensor(_Base):
             if calibration is None:
                 return None
             day0 = self._days()[0]
+            learned = calibration.factors()
+            today = {}
+            for hour in snap.raw_plant.hours:
+                local = dt_util.as_local(hour.start)
+                if local.date() == day0 and (hour.ghi or 0) > 0 and (key := calibration.bin_of(hour.start)) in learned:
+                    today[local.strftime("%H:%M")] = learned[key]
             return {
-                # per hour of the day in local time; learned in UTC, so the labels move with the clock change
-                "hourly": {
-                    dt_util.as_local(datetime.combine(day0, time(hour), UTC)).strftime("%H:%M"): factor for hour, factor in calibration.factors().items()
-                },
+                # today's hours whose part of the sky has evidence of its own (the others take the overall factor)
+                "hourly": today,
+                # all that was learned, by the sun's bearing and height in degrees (the lower edges of each part)
+                "sun_position": learned,
                 "samples": calibration.samples,
                 "last_sample": calibration.last_sample or None,
                 "yield_sensor": self.coordinator.yield_sensor,
                 "energy_today_uncalibrated": _kwh(snap.raw_plant.day_energy_wh(day0)),
+            }
+        if self._key == "station_correction":
+            station = self.coordinator.station
+            found = self.coordinator.correction
+            now = dt_util.utcnow().replace(minute=0, second=0, microsecond=0)
+            return {
+                "station": station.get("name") or None,
+                "distance_km": station.get("distance_km"),
+                "measured_w_m2": None if found is None else found.measured,
+                "forecast_w_m2": None if found is None else found.expected,
+                "measured_at": None if found is None else found.measured_at.isoformat(),
+                # the share of the difference that is applied to the current hour
+                "weight": None if found is None else round(found.weight(now), 2),
             }
         if self._key in _ACCURACY_DAYS:
             accuracy = self.coordinator.accuracy

@@ -21,6 +21,8 @@ DATA_BASE = "https://data.geo.admin.ch"
 STAC_BASE = f"{DATA_BASE}/api/stac/v1/collections"
 COLLECTION_FORECAST = "ch.meteoschweiz.ogd-local-forecasting"
 FORECAST_META_POINTS_URL = f"{DATA_BASE}/{COLLECTION_FORECAST}/ogd-local-forecasting_meta_point.csv"
+COLLECTION_STATIONS = "ch.meteoschweiz.ogd-smn"  # the automatic measurement network (SwissMetNet)
+STATIONS_META_URL = f"{DATA_BASE}/{COLLECTION_STATIONS}/ogd-smn_meta_stations.csv"
 DOCS_URL = "https://opendatadocs.meteoswiss.ch/e-forecast-data/e4-local-forecast-data"
 
 # --- Config entry keys -------------------------------------------------------
@@ -39,6 +41,7 @@ CONF_PLANT_INVERTER_KW = "plant_inverter_kw"  # AC limit of the plant as a whole
 CONF_HORIZON = "terrain_horizon"  # whether the terrain horizon (swisstopo elevation model) blocks the direct beam
 CONF_YIELD_SENSOR = "yield_sensor"  # entity id of the plant's energy meter, for the self-calibration; empty = none
 CONF_SNOW = "snow"  # whether snow on the modules is modelled from precipitation and temperature
+CONF_STATION = "station_correction"  # whether the radiation a nearby station measures corrects the next hours
 CONF_PLANE_LABEL = "label"  # short name of the plane, e.g. "SW 230°" or the user's text
 CONF_KWP = "kwp"  # installed DC peak power of the plane, kWp
 CONF_AZIMUTH = "azimuth"  # compass bearing the modules face, degrees: 0 north, 90 east, 180 south, 270 west
@@ -73,6 +76,7 @@ PARAM_TEMPERATURE = "tre200h0"  # air temperature 2 m, °C, hourly mean
 PARAM_PRECIPITATION = "rre150h0"  # precipitation, mm, hourly total
 PARAM_WIND = "fu3010h0"  # wind speed 10 m above ground, km/h, hourly mean
 HOURLY_PARAMS = (PARAM_GLOBAL, PARAM_DIFFUSE, PARAM_TEMPERATURE, PARAM_PRECIPITATION, PARAM_WIND)
+PARAM_STATION_GLOBAL = "gre000z0"  # global radiation a station measured, W/m², ten-minute mean
 PROBE_PARAM = "jp2000d0"  # a small daily file: one HEAD request tells whether a run exists
 
 # Files whose rows are grouped by timestamp rather than by point (measured

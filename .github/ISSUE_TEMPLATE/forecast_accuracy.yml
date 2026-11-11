@@ -1,0 +1,56 @@
+name: Forecast accuracy report
+description: Tell how well the forecast fits your plant. The figures of many plants are what makes it better for all of them.
+title: "Accuracy: "
+labels: ["accuracy"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for sharing your figures. The integration sends nothing by itself: this form is the only way they reach the project.
+
+        The diagnostics download (entry's ⋮ menu → *Download diagnostics*) carries the measured energy, the forecast and the day-ahead forecast of the last 30 days. Your location and the name of your yield meter are redacted in it, and the measurement station is left out. Have a look at the file before you attach it.
+  - type: input
+    id: version
+    attributes:
+      label: Version of the integration
+      placeholder: "0.4.0"
+    validations:
+      required: true
+  - type: input
+    id: plant
+    attributes:
+      label: The plant in brief
+      description: Peak power, number of planes and their orientation, and the region or altitude if you like (no address needed).
+      placeholder: "9.6 kWp, two planes (east 20°, west 20°), Central Plateau, 450 m"
+    validations:
+      required: true
+  - type: dropdown
+    id: direction
+    attributes:
+      label: How does the forecast fit?
+      options:
+        - It fits well
+        - Mostly too high
+        - Mostly too low
+        - Too high on some days, too low on others
+        - Wrong at certain times of the day only
+    validations:
+      required: true
+  - type: input
+    id: accuracy
+    attributes:
+      label: Accuracy sensors
+      description: The states of `…_accuracy_7_days` and `…_accuracy_30_days`, if you have named a yield meter.
+      placeholder: "7 days: 84 %, 30 days: 79 %"
+  - type: textarea
+    id: when
+    attributes:
+      label: When is it off?
+      description: Weather (fog, snow, broken cloud, clear days), time of the day, season — whatever you noticed.
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: Drag the downloaded diagnostics file here.
+    validations:
+      required: true

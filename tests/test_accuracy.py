@@ -98,3 +98,17 @@ def test_old_days_and_forgotten_hours_go() -> None:
     acc.record([(FIRST + timedelta(days=50), 500.0)], FIRST + timedelta(days=49), _utc_date)
     acc.record([(FIRST + timedelta(days=60), 500.0)], FIRST + timedelta(days=59), _utc_date)
     assert list(acc.pending) == [(FIRST + timedelta(days=60)).isoformat()] and list(acc.ahead) == list(acc.pending)
+
+
+def test_the_days_one_by_one() -> None:
+    acc = Accuracy(fingerprint="a")
+    for i in range(3):
+        _day(acc, FIRST + timedelta(days=i), ahead_wh=1100.0, last_wh=1050.0, measured_wh=1000.0)
+    _day(acc, FIRST + timedelta(days=3), ahead_wh=1100.0, last_wh=1050.0, measured_wh=1000.0, hours=12)  # the meter was away
+    _day(acc, FIRST + timedelta(days=4), ahead_wh=1100.0, last_wh=1050.0, measured_wh=1000.0)  # the running day
+    rows = acc.daily((FIRST + timedelta(days=4)).date(), 30)
+    # complete days only, oldest first, and never the running one
+    assert [row["date"] for row in rows] == ["2026-06-01", "2026-06-02", "2026-06-03"]
+    assert rows[1] == {"date": "2026-06-02", "measured_kwh": 10.0, "forecast_kwh": 10.5, "day_ahead_kwh": 11.0, "hourly_error_kwh": 0.5, "hours": 24}
+    assert [row["date"] for row in acc.daily((FIRST + timedelta(days=4)).date(), 2)] == ["2026-06-03"]
+    assert Accuracy().daily(date(2026, 6, 10), 30) == []

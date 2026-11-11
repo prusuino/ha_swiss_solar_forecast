@@ -8,7 +8,11 @@
           "name": "Name der Anlage",
           "location": "Standort (Marker auf dem Dach)",
           "search": "Strassenadresse (optional; ersetzt den Marker)",
-          "plant_inverter_kw": "Wechselrichter-Grenze AC (0 = keine)"
+          "plant_inverter_kw": "Wechselrichter-Grenze AC (0 = keine)",
+          "yield_sensor": "Ertragszähler (optional)"
+        },
+        "data_description": {
+          "yield_sensor": "Ein Energiesensor, der zählt, was die ganze Anlage produziert (Gesamt- oder Tageszähler, Wh, kWh oder MWh). Damit korrigiert sich die Prognose selbst: Sie lernt, was das Modell nicht wissen kann (Verschattung durch Bäume oder Gebäude, Verschmutzung), der heutige Wert übernimmt die bereits gezählten Stunden, und die Trefferquote der Prognose wird sichtbar. Lässt sich später unter «Konfigurieren» setzen oder ändern."
         }
       },
       "address": {
@@ -111,12 +115,14 @@
           "plant_inverter_kw": "Wechselrichter-Grenze AC (0 = keine)",
           "terrain_horizon": "Geländehorizont (Berge und Talflanken)",
           "snow": "Schnee auf den Modulen",
+          "station_correction": "Korrektur durch eine Messstation in der Nähe",
           "yield_sensor": "Ertragszähler für die Selbstkalibrierung (optional)"
         },
         "data_description": {
           "terrain_horizon": "Liest den Horizont des Standorts einmal aus dem Höhenmodell von swisstopo. Solange die Sonne hinter einem Berg oder einer Talflanke steht, zählt nur das diffuse Licht. Nur das blanke Gelände: Bäume und Gebäude sind im Modell nicht enthalten.",
           "snow": "Verfolgt den Schnee aus der Prognose: Niederschlag, der als Schnee fällt, deckt die Module zu, und sie liefern nichts, bis er abgerutscht oder geschmolzen ist. Steile Module werden schneller frei als flache. Eine Schätzung; mit einem Ertragszähler werden Module, die liefern, obwohl die Prognose sie bedeckt zeigt, sofort freigegeben.",
-          "yield_sensor": "Ein Energiesensor, der zählt, was die ganze Anlage produziert (Gesamt- oder Tageszähler, Wh, kWh oder MWh). Jede Stunde wird die Prognose mit dem gezählten Ertrag verglichen und daraus ein Faktor je Tagesstunde gelernt: Verschattung durch Bäume oder Gebäude, Verschmutzung, alles, was das Modell nicht kennt. Stunden mit Schnee auf den Modulen bleiben aussen vor. Mit dem Zähler sehen Sie auch, wie genau die Prognose in den letzten 7 und 30 Tagen war. Leer lassen schaltet die Selbstkalibrierung aus; ein anderer Zähler oder geänderte Werte einer Fläche lassen das Lernen neu beginnen."
+          "station_correction": "Solange die Sonne am Himmel steht, wird die Strahlung, welche die nächste Messstation von MeteoSchweiz in der letzten Stunde gemessen hat, mit der Prognose für dieselbe Zeit verglichen. Die Abweichung korrigiert die laufende Stunde und abklingend die nächsten drei. Nur mit einer Station im Umkreis von 25 km auf ähnlicher Höhe; kostet tagsüber eine kleine Abfrage alle 15 Minuten.",
+          "yield_sensor": "Ein Energiesensor, der zählt, was die ganze Anlage produziert (Gesamt- oder Tageszähler, Wh, kWh oder MWh). Jede Stunde wird die Prognose mit dem gezählten Ertrag verglichen und daraus ein Faktor je Sonnenstand gelernt: Verschattung durch Bäume oder Gebäude, Verschmutzung, alles, was das Modell nicht kennt. Er folgt der Sonne und nicht der Uhr, das Gelernte gilt also weiter, wenn die Tage länger oder kürzer werden. Abgelaufene Stunden zählen im heutigen Wert mit dem, was der Zähler gezählt hat. Stunden mit Schnee auf den Modulen bleiben aussen vor. Mit dem Zähler sehen Sie auch, wie genau die Prognose in den letzten 7 und 30 Tagen war. Leer lassen schaltet die Selbstkalibrierung aus; ein anderer Zähler oder geänderte Werte einer Fläche lassen das Lernen neu beginnen."
         }
       }
     },
@@ -173,6 +179,9 @@
       },
       "terrain_horizon": {
         "name": "Geländehorizont"
+      },
+      "station_correction": {
+        "name": "Stationskorrektur"
       },
       "calibration_factor": {
         "name": "Kalibrierfaktor"

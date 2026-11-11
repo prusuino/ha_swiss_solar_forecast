@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.0 — 2026-11-11
+
+- **The hours that are over stay as they were.** Every model run computes the whole day again, the morning included, so the day's total kept moving until the evening and could end far from what the day had brought. An hour that has ended now keeps the value it ended with. With a yield meter, the plant's energy of the day counts the finished hours with what the meter measured in them (attribute `measured_hours`); the planes keep their forecast.
+- **Station correction.** While the sun is up, the global radiation the nearest MeteoSwiss measurement station (SwissMetNet, within 25 km and 300 m of height) received in the last hour is set against the forecast. The ratio corrects the running hour and, fading out, the next three. It works without a meter and without a setting; a new diagnostics sensor `…_station_correction` shows it, and a switch under Configure → Σ turns it off. Costs one small request in 15 minutes during daylight, up to 1 MB a day in summer.
+- **The calibration learns by the sun's position** instead of by the hour of the day: one factor per part of the sky (15° of direction, 10° of height). Shading learned in autumn keeps fitting in winter and spring, when the sun passes the same tree at another time. What was learned by the hour cannot be carried over: the learning starts anew with this version and needs its two to three weeks again.
+- **The yield meter is asked for at the setup**, as an optional field of the first step. It remains an option that can be changed or removed later.
+- **Accuracy day by day in the diagnostics**: measured energy, forecast and day-ahead forecast of the last 30 days, with the state of the station correction and of the finished hours. A new issue form, *Forecast accuracy report*, takes the file. Nothing is sent by the integration itself; the station's name is not part of the download.
+- The attribute `hourly` of `…_calibration_factor` now lists today's hours; the factors per part of the sky are in the new attribute `sun_position`.
+
 ## 0.3.1 — 2026-11-10
 
 - **Fix**: a plant that lies closer to a measurement station or a mountain point than to the centre of its postal code never loaded («has no global radiation for this point», the entry kept retrying). The list of forecast points names stations, mountain points and postal-code centres alike, but only the postal-code centres carry radiation, and the setup took the nearest point of any kind. It now takes the nearest one with radiation, and an entry that sits on a point without it moves over by itself at the next start — nothing to set up again.

@@ -8,7 +8,11 @@
           "name": "Name of the plant",
           "location": "Location (marker on the roof)",
           "search": "Street address (optional; replaces the marker)",
-          "plant_inverter_kw": "Inverter AC limit (0 = none)"
+          "plant_inverter_kw": "Inverter AC limit (0 = none)",
+          "yield_sensor": "Yield meter (optional)"
+        },
+        "data_description": {
+          "yield_sensor": "An energy sensor that counts what the whole plant produces (total or daily counter, Wh, kWh or MWh). With it the forecast corrects itself: it learns what the model cannot know (shading by trees or buildings, soiling), today's figure takes the hours the meter has already counted, and you see how accurate the forecast was. Can be set or changed later under Configure."
         }
       },
       "address": {
@@ -111,12 +115,14 @@
           "plant_inverter_kw": "Inverter AC limit (0 = none)",
           "terrain_horizon": "Terrain horizon (mountains and valley sides)",
           "snow": "Snow on the modules",
+          "station_correction": "Correction from a measurement station nearby",
           "yield_sensor": "Yield meter for the self-calibration (optional)"
         },
         "data_description": {
           "terrain_horizon": "Reads the horizon of the place once from the swisstopo elevation model. While the sun stands behind a mountain or a valley side, only the diffuse light counts. Bare terrain only: trees and buildings are not in the model.",
           "snow": "Follows the snow from the forecast: precipitation that falls as snow covers the modules, and they produce nothing until it has slid off or melted. Steep modules clear sooner than flat ones. An estimate; with a yield meter, modules that produce although the forecast shows them covered are set free at once.",
-          "yield_sensor": "An energy sensor that counts what the whole plant produces (total or daily counter, Wh, kWh or MWh). Every hour the forecast is compared with what was counted, and a factor per hour of the day is learned: shading by trees or buildings, soiling, whatever the model does not know. Hours with snow on the modules are left out. With the meter you also see how accurate the forecast was over the last 7 and 30 days. Leave empty to switch the self-calibration off; another meter or changed figures of a plane start the learning anew."
+          "station_correction": "While the sun is up, the radiation the nearest MeteoSwiss measurement station recorded in the last hour is compared with the forecast for the same time. The difference corrects the current hour and, fading out, the next three. Only with a station within 25 km at a similar height; costs one small request every 15 minutes during the day.",
+          "yield_sensor": "An energy sensor that counts what the whole plant produces (total or daily counter, Wh, kWh or MWh). Every hour the forecast is compared with what was counted, and a factor per place of the sun in the sky is learned: shading by trees or buildings, soiling, whatever the model does not know. It follows the sun and not the clock, so what was learned holds when the days grow longer or shorter. Hours that are over count in today's figure with what the meter counted. Hours with snow on the modules are left out. With the meter you also see how accurate the forecast was over the last 7 and 30 days. Leave empty to switch the self-calibration off; another meter or changed figures of a plane start the learning anew."
         }
       }
     },
@@ -173,6 +179,9 @@
       },
       "terrain_horizon": {
         "name": "Terrain horizon"
+      },
+      "station_correction": {
+        "name": "Station correction"
       },
       "calibration_factor": {
         "name": "Calibration factor"
