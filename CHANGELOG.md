@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.4.0 — unreleased
+## 0.4.0 — 2026-11-11
 
 - **The hours that are over stay as they were.** Every model run computes the whole day again, the morning included, so the day's total kept moving until the evening and could end far from what the day had brought. An hour that has ended now keeps the value it ended with. With a yield meter, the plant's energy of the day counts the finished hours with what the meter measured in them (attribute `measured_hours`); the planes keep their forecast.
 - **Station correction.** While the sun is up, the global radiation the nearest MeteoSwiss measurement station (SwissMetNet, within 25 km and 300 m of height) received in the last hour is set against the forecast. The ratio corrects the running hour and, fading out, the next three. It works without a meter and without a setting; a new diagnostics sensor `…_station_correction` shows it, and a switch under Configure → Σ turns it off. Costs one small request in 15 minutes during daylight, up to 1 MB a day in summer.
