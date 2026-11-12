@@ -45,9 +45,10 @@ WINTER_RUN = datetime(2026, 1, 15, 4, 0, tzinfo=UTC)
 
 def snow_run(run: datetime = WINTER_RUN, days: int = 3, snowfall_hours: int = 6) -> ForecastData:
     """A winter forecast: six hours of snowfall in the first night, then
-    two clear days at -3 °C and a third at +5 °C, with a light wind."""
+    two clear days at -3 °C and a third at +5 °C, with a light wind and
+    no cloud in the low and the medium-high layer."""
     data = ForecastData(run=run, point=(800100, 2))
-    series: dict[str, list] = {"gre000h0": [], "ods000h0": [], "tre200h0": [], "rre150h0": [], "fu3010h0": []}
+    series: dict[str, list] = {"gre000h0": [], "ods000h0": [], "tre200h0": [], "rre150h0": [], "fu3010h0": [], "nprolohs": [], "npromths": []}
     start = run.replace(hour=0)
     for i in range(24 * days):
         ts = start + timedelta(hours=i + 1)
@@ -58,16 +59,46 @@ def snow_run(run: datetime = WINTER_RUN, days: int = 3, snowfall_hours: int = 6)
         series["tre200h0"].append((ts, -3.0 if i < 48 else 5.0))
         series["rre150h0"].append((ts, 1.0 if i < snowfall_hours else 0.0))
         series["fu3010h0"].append((ts, 7.2))
+        series["nprolohs"].append((ts, 0.0))
+        series["npromths"].append((ts, 0.0))
     data.series = series
     return data
 
 
 @pytest.fixture
 def snow_forecast():
-    """The coordinator finds the winter run and reads its five series."""
+    """The coordinator finds the winter run and reads its seven series."""
     with (
         patch("custom_components.swiss_solar_forecast.coordinator.async_find_latest_run", return_value=WINTER_RUN),
         patch("custom_components.swiss_solar_forecast.coordinator.async_fetch_forecast", return_value=snow_run()),
+    ):
+        yield
+
+
+def stratus_run(run: datetime = WINTER_RUN, days: int = 3) -> ForecastData:
+    """A winter forecast under low stratus: the grey lid lies over the
+    first day until 11 UTC and over the whole second day, the third day is
+    clear. Under the lid a third of the light is left, nearly all of it
+    diffuse, and hardly a cloud stands above. No snow falls."""
+    data = snow_run(run, days, snowfall_hours=0)
+    series = data.series
+    for i in range(24 * days):  # the hour that starts i hours after the midnight of the run's day
+        if i >= 11 and not 24 <= i < 48:
+            continue
+        ts, value = series["gre000h0"][i]
+        series["gre000h0"][i] = (ts, round(0.3 * value, 1))
+        series["ods000h0"][i] = (ts, round(0.95 * 0.3 * value, 1))
+        series["nprolohs"][i] = (ts, 0.95)
+        series["npromths"][i] = (ts, 0.1)
+    return data
+
+
+@pytest.fixture
+def stratus_forecast():
+    """The coordinator finds the winter run and reads a forecast with low stratus."""
+    with (
+        patch("custom_components.swiss_solar_forecast.coordinator.async_find_latest_run", return_value=WINTER_RUN),
+        patch("custom_components.swiss_solar_forecast.coordinator.async_fetch_forecast", return_value=stratus_run()),
     ):
         yield
 

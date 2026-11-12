@@ -13,7 +13,7 @@
 
 A Home Assistant custom integration that forecasts the output of your PV plant from the **MeteoSwiss local forecast**: global and diffuse radiation, air temperature, wind and precipitation, hour by hour for nine days, for every Swiss postal code — official open data, no account, no API key, no limit on the number of calls.
 
-> **Open data only.** Everything comes from the files MeteoSwiss publishes under CC BY 4.0 on the federal geodata platform. The integration reads only the rows of your place with range requests: about 14 MB a day, where the files of a single model run weigh 160 MB.
+> **Open data only.** Everything comes from the files MeteoSwiss publishes under CC BY 4.0 on the federal geodata platform. The integration reads only the rows of your place with range requests: about 15 MB a day, where the files of a single model run weigh 160 MB.
 
 ## Highlights
 
@@ -24,13 +24,14 @@ A Home Assistant custom integration that forecasts the output of your PV plant f
 - **A day that adds up**: an hour that is over keeps the value it ended with. A later model run no longer rewrites the morning, so the day's total in the evening is what was forecast for it — and with a yield meter, the finished hours count with what the plant really produced.
 - **Learns from your own meter**: name the energy sensor of your plant — right at the setup or later — and the integration compares every hour what was forecast with what was counted. It learns one factor per part of the sky the sun stands in: the tree that shades the roof while the sun is low in the south-east, the building next door in the evening, soiling, a plant that simply does better than the textbook. Because it goes by the sun's position and not by the clock, what was learned in October still fits in February.
 - **Snow on the modules**: after a snowfall a radiation forecast alone is far too high. The integration follows the snow from the forecast — what falls in the cold covers the modules, steep modules clear sooner than flat ones — and takes the covered share out of the forecast until it has slid off or melted. A sensor shows the cover and when the modules are expected to be free.
+- **Low stratus**: on the Plateau the grey lid of autumn and winter decides the day, and when it opens is the hardest thing a weather model has to tell. The integration recognises these hours from the cloud layers of the forecast — a closed low layer under an open sky — and shows how many of today's daylight hours lie under it and when it is expected to open. With a yield meter they are learned on their own, apart from the shadows of the sunny hours.
 - **Tells you how good it is**: with a meter, two sensors show the accuracy of the forecast over the last 7 and 30 days, measured against what your plant really produced.
 - **Energy dashboard**: the forecast appears as *solar production forecast* in the energy dashboard, like Solcast or Forecast.Solar — without an account or a daily request limit.
 - **Sensors that automations can use**: energy today, tomorrow, the day after and the rest of today; power now and next hour; today's peak and when it comes. Hourly values for nine days as attributes.
 - **Several roofs, one plant**: all planes in one entry, with the plant's totals and a sensor per plane; the energy dashboard gets the sum.
 - **A yardstick**: with a cadastre roof, a sensor shows the long-term expectation of a day in this month and the forecast as a percentage of it — "today 60 % of a normal November day".
 - **Damping by hand**: without a meter, a damping factor per plane scales the result once you have compared a few weeks with your real yield.
-- **Reads sparingly**: one HEAD request every 15 minutes tells whether a new model run exists (two in the few minutes after the full hour, while the run of that hour is not out yet); only then are the parameter files read. Four of them cost about 160 KB together with every hourly run; the temperature file is laid out differently and costs 2.3 MB, so it is read every six hours only and its series is kept in between. That makes about 13 MB a day. While the sun is up, the nearest measurement station's file of the day (about 20 KB) is read once in 15 minutes: up to 1 MB a day in summer, a third of that in winter. Diagnostics sensors show the traffic.
+- **Reads sparingly**: one HEAD request every 15 minutes tells whether a new model run exists (two in the few minutes after the full hour, while the run of that hour is not out yet); only then are the parameter files read. Four of them cost about 160 KB together with every hourly run; the two cloud layers (about 40 KB each) are read with every third run; the temperature file is laid out differently and costs 2.3 MB, so it is read every six hours only. The series of a file that is not read are kept in between. That makes about 14 MB a day. While the sun is up, the nearest measurement station's file of the day (about 20 KB) is read once in 15 minutes: up to 1 MB a day in summer, a third of that in winter. Diagnostics sensors show the traffic.
 - **Set up in a minute**: from your Home Assistant location or by typing a place or postal code; German, English, French and Italian; repairs notice when the data cannot be read; diagnostics download with your location redacted.
 
 ## Background
@@ -55,9 +56,10 @@ One device per plant, with these sensors for the plant (the planes' sum):
 | `…_peak_power_tomorrow` | Tomorrow's peak (disabled by default). |
 | `…_typical_day_energy`, `…_forecast_vs_typical` | Only with planes chosen from the cadastre: the long-term expectation of a day of this month (attributes: tomorrow, the whole month, the figure per plane) and today's forecast as a percentage of it. |
 | `…_snow_cover` | With the snow model switched on: the share of the modules under snow now, in percent (*unknown* while a run carries no precipitation forecast). Attributes: the cover per plane, the snow on the ground in millimetres of water, the hour from which the modules are expected to be free, and the energy the snow takes today. |
+| `…_low_stratus_today` | The number of today's daylight hours the forecast sees under low stratus (*unknown* while a run carries no cloud layers). Attributes: these hours (local time), when the stratus is expected to open (empty when there is none or it stays until dusk), today's hours of daylight and the number of such hours tomorrow. |
 | `…_terrain_horizon` | Diagnostics, with the terrain horizon switched on: the highest angle under which the terrain is seen, in degrees. Attributes: the direction of that point, the height of the place and the whole profile (direction → angle, north-east over south to north-west). |
 | `…_station_correction` | Diagnostics: what the nearest measurement station received in the last hour, in percent of what was forecast for it (100 = as forecast; *unknown* at night, without a station in reach or while it is silent). Attributes: the station and its distance, the measured and the forecast radiation, the time of the last measurement and the weight the difference has on the current hour. |
-| `…_calibration_factor` | Diagnostics, with a yield meter: the factor learned over all hours (1 = the model fits). Attributes: the factor of each of today's hours (local time), the factor per part of the sky (`azimuth/elevation`), the number of hours learned, the last one, and the energy of today without the calibration. |
+| `…_calibration_factor` | Diagnostics, with a yield meter: the factor learned over all hours (1 = the model fits). Attributes: the factor of each of today's hours (local time), the factor per part of the sky (`azimuth/elevation`), the factor of the hours under low stratus and how many hours stand behind it, the number of hours learned, the last one, and the energy of today without the calibration. |
 | `…_accuracy_7_days`, `…_accuracy_30_days` | Diagnostics, with a yield meter: the accuracy of the forecast that stood at the start of each day, over the last 7 and 30 full days, in percent. Attributes: the accuracy of the last forecast before each hour, the hourly accuracy, the bias, the number of days and the energy forecast and measured. |
 | `…_run`, `…_requests_today`, `…_bytes_today` | Diagnostics: the model run in use — with the requests and bytes its read cost as attributes — and the requests and bytes read since midnight (disabled by default). |
 
@@ -139,9 +141,10 @@ Name the yield meter at the setup, or open the ⚙️ of the entry, **Configure 
 - At every full hour the integration reads the meter and compares its increase with what the model had forecast for that hour (before any calibration).
 - It keeps, per part of the sky — the sun's direction in steps of 15° and its height in steps of 10° — a running sum of counted and forecast energy in which older days fade (a memory of about two weeks), and from it a factor for that part of the sky. Every coming hour is multiplied with the factor of where the sun will stand in it and clipped at the inverter limit again. A tree shades the roof when the sun is behind it, whatever the clock says: what was learned keeps fitting as the days grow shorter or longer.
 - A factor needs evidence: after one day it has hardly moved, after two to three weeks of productive days a part of the sky is trusted fully. Parts without evidence use the factor of the plant as a whole. The factors stay between 0.1 and 1.5.
+- Hours the forecast sees under [low stratus](#low-stratus) are learned apart: one factor for all of them, wherever the sun stands behind the lid. They leave the factors of the sky alone — a week of fog does not pass for a shadow in the south-east — and the coming hours under low stratus are multiplied with their own factor. It follows the factor of the plant as a whole until it has evidence of its own, is trusted fully after about forty such hours and remembers about seventy of them, some ten grey days.
 - Hours with next to no forecast (night, deep overcast), hours with snow on the modules, hours in which the meter did not move or jumped, and gaps in the readings teach nothing.
 
-The sensor `…_calibration_factor` shows the factor over all hours and, as attributes, the factor of each of today's hours, the factor per part of the sky, the number of hours learned and the energy of today as the model alone would have it. What was learned is kept across restarts. It starts anew when you pick another meter or change the figures of a plane or the inverter limit, and it is deleted when you remove the meter from the options.
+The sensor `…_calibration_factor` shows the factor over all hours and, as attributes, the factor of each of today's hours, the factor per part of the sky, the factor of the hours under low stratus, the number of hours learned and the energy of today as the model alone would have it. What was learned is kept across restarts. It starts anew when you pick another meter or change the figures of a plane or the inverter limit, and it is deleted when you remove the meter from the options.
 
 Good to know:
 
@@ -171,6 +174,26 @@ Good to know:
 - All of this is an **estimate**. The thresholds come from the literature (the sliding after Marion et al., the model NREL's SAM uses) and are not fitted to your roof: frameless modules, a snow guard at the eaves or a roof the wind sweeps behave differently. Expect the forecast to be right about *whether* snow lies on the modules more often than about the hour it goes.
 - It follows the forecast, not a measurement: snowfall the forecast missed is missed here too, and so is snow that fell before the integration was set up.
 - To switch it off: the ⚙️ of the entry, **Configure → Whole plant**.
+
+### Low stratus
+
+In autumn and winter cold air lies over the Plateau and in the valleys, and a layer of low stratus or fog closes it for hours or days while the sky above is clear. For a PV plant these are hours of their own kind: all the light is diffuse, and whether the lid opens at eleven, at two or not at all is the hardest thing a weather model has to tell on such a day.
+
+The MeteoSwiss local forecast gives the cloud cover in layers. An hour counts as low stratus when
+
+- the low clouds cover at least three quarters of the sky,
+- the medium-high clouds cover no more than 30 % of it (a front has clouds at every height),
+- no more than 0.1 mm of precipitation falls, and
+- at least three quarters of the hour's light are diffuse.
+
+The sensor `…_low_stratus_today` shows how many of today's daylight hours lie under it and, as attributes, which hours these are, when the stratus is expected to open and how many such hours tomorrow has.
+
+Good to know:
+
+- The hours are **shown, not corrected**: the radiation of the forecast already has the stratus in it, and the integration does not second-guess it. What changes is the [self-calibration](#self-calibration): with a yield meter these hours are learned on their own, so the next grey day is scaled with what the plant really made under the lid, and the factors of the sunny hours stay what they are.
+- It follows the forecast: stratus the model does not see is not seen here either, and the hour it opens is the model's guess. Expect larger errors on such days than on any other.
+- The thresholds are plain meteorological sense, not fitted to a plant or a region.
+- The two cloud-layer files are read with every third model run, about 0.6 MB a day.
 
 ### Forecast accuracy
 
@@ -206,7 +229,7 @@ The integration declares **Bronze** on the [Home Assistant integration quality s
 - **Horizon.** Nine days hour by hour; the sensors show today, tomorrow and the day after, the attributes everything.
 - **Units.** Energy in kWh, power in W; the hourly values are the mean power of the hour, so a value of 5000 W for the hour starting 12:00 means 5 kWh between 12:00 and 13:00.
 - **Forecast point.** MeteoSwiss publishes the radiation for the centres of the postal codes. The integration takes the one nearest to your plant — not a measurement station or a mountain point that may lie closer, because those come without radiation.
-- **Known limitations.** The terrain horizon knows no trees and buildings, and the self-calibration needs a meter and a couple of weeks; no bifacial or tracker systems; the inverter limit is a hard clip of the hourly mean, so short peaks above the limit inside an hour are not modelled.
+- **Known limitations.** The terrain horizon knows no trees and buildings, and the self-calibration needs a meter and a couple of weeks; no bifacial or tracker systems; the inverter limit is a hard clip of the hourly mean, so short peaks above the limit inside an hour are not modelled; under low stratus the day stands and falls with the hour the forecast lets it open.
 
 ## Troubleshooting
 

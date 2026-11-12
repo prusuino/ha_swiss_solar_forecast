@@ -184,6 +184,9 @@
       "snow_cover": {
         "name": "Schnee auf den Modulen"
       },
+      "low_stratus_today": {
+        "name": "Hochnebel heute"
+      },
       "run": {
         "name": "Prognoselauf"
       },

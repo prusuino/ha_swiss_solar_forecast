@@ -1,5 +1,6 @@
 """Diagnostics download: the planes, the run, what the reads cost and the
-hourly result, the terrain horizon in brief, the snow as it is followed,
+hourly result with the hours under low stratus, the terrain horizon in
+brief, the snow as it is followed,
 the correction from a measurement station, what the calibration learned
 and how accurate the forecast was day by day, with the place redacted
 (the horizon's full profile and the station's name are left out: they
@@ -58,6 +59,12 @@ def _calibration(coordinator: SolarForecastCoordinator | None) -> dict[str, Any]
         "reading_time": calibration.reading_time,
         "has_reading": calibration.reading_wh is not None,
         "logged_hours": len(calibration.log),
+        # the hours under low stratus, learned together: factor, then Wh counted, Wh forecast, hours (older ones fade)
+        "low_stratus": {
+            "factor": round(calibration.stratus_factor, 3) if calibration.stratus_learned else None,
+            "sums": [round(v, 1) for v in calibration.stratus],
+            "marked_hours": len(calibration.stratus_log),
+        },
     }
 
 
@@ -145,6 +152,7 @@ async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry: ConfigE
             "missing": snap.missing if snap else None,
             "series_runs": {param: run.isoformat() for param, run in sorted(coordinator.series_runs.items())} if coordinator else None,
             "diffuse_from_forecast": snap.diffuse_forecast if snap else None,
+            "low_stratus_known": snap.stratus_known if snap else None,
             "requests_today": snap.requests_today if snap else None,
             "bytes_today": snap.bytes_today if snap else None,
             "last_read": {"requests": snap.last_requests, "bytes": snap.last_bytes} if snap else None,
@@ -160,6 +168,7 @@ async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry: ConfigE
                     "wind": None if h.wind is None else round(h.wind, 1),
                     "snow_cover": round(h.snow_cover, 2),
                     "snow_loss_kw": round(h.snow_loss_kw, 3),
+                    "low_stratus": h.start in snap.stratus,
                 }
                 for h in (snap.plant.hours if snap else [])
             ],

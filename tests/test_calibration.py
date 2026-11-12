@@ -1,6 +1,7 @@
 """The self-calibration: what is learned from the meter and for which part
-of the sky, how cautiously, what is skipped, and what survives a restart
-or comes from an earlier version."""
+of the sky, how cautiously, what is skipped, the hours under low
+stratus that are learned apart, and what survives a restart or comes from
+an earlier version."""
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
@@ -191,3 +192,87 @@ def test_factors_learned_per_hour_of_the_day_move_to_the_sky() -> None:
     assert cal.as_dict()["bins_by"] == BINS_BY
     # without a last sample there is no telling where the sun stood
     assert Calibration.from_dict({**old, "last_sample": ""}, "x", LAT, LON).bins == {}
+
+
+# An hour before a November noon, the season of the low stratus.
+GREY = datetime(2026, 11, 20, 10, 0, tzinfo=UTC)
+
+
+def _grey_hour(cal: Calibration, start: datetime, forecast_wh: float, measured_wh: float, meter_wh: float = 50000.0) -> bool:
+    """Like `_one_hour`, for an hour the forecast sees under low stratus."""
+    cal.record_forecast([(start, forecast_wh)], start, stratus={start})
+    cal.meter_read(start, meter_wh, MIN_WH, MAX_WH)
+    return cal.meter_read(start + HOUR, meter_wh + measured_wh, MIN_WH, MAX_WH)
+
+
+def test_hours_under_low_stratus_are_learned_apart_from_the_sky() -> None:
+    cal = _calibration()
+    assert not cal.stratus_learned and cal.stratus_factor == 1.0 and cal.factor_at(GREY, True) == 1.0
+    for day in range(10):
+        assert _grey_hour(cal, GREY + timedelta(days=day), 1000.0, 600.0)
+    # they count as hours learned, but no part of the sky and not the plant's factor has heard of them
+    assert cal.samples == 10 and cal.bins == {} and cal.overall == 1.0 and cal.factors() == {}
+    assert cal.stratus_learned and 9.0 < cal.stratus[2] < 10.0
+    # ten hours are thin evidence: between what was counted and the plant's factor
+    assert 0.7 < cal.stratus_factor < 0.9
+    assert cal.factor_at(GREY, True) == cal.stratus_factor and cal.factor_at(GREY) == 1.0
+    # a grey season later they stand alone
+    for day in range(10, 60):
+        _grey_hour(cal, GREY + timedelta(days=day), 1000.0, 600.0)
+    assert abs(cal.stratus_factor - 0.6) < 0.01 and cal.overall == 1.0
+
+
+def test_the_sky_and_the_low_stratus_each_keep_their_own() -> None:
+    cal = _calibration()
+    for day in range(21):
+        start = DAY + timedelta(days=day)
+        assert _one_hour(cal, start, 4000.0, 4000.0)  # in the sun the model fits
+        assert _grey_hour(cal, start + 2 * HOUR, 1000.0, 500.0)  # under the lid it promises twice too much
+    assert cal.samples == 42 and cal.bins and abs(cal.overall - 1.0) < 0.01
+    assert abs(cal.factor_at(DAY) - 1.0) < 0.01
+    assert 0.55 < cal.stratus_factor < 0.75
+    # an hour under the lid takes the factor of the lid, wherever the sun stands behind it
+    assert cal.factor_at(DAY, True) == cal.stratus_factor
+    # without evidence of its own the lid follows the plant
+    other = _calibration()
+    for day in range(30):
+        _one_hour(other, DAY + timedelta(days=day), 4000.0, 3000.0)
+    assert not other.stratus_learned and other.stratus_factor == other.overall < 0.9
+
+
+def test_the_mark_of_an_hour_follows_the_forecast_until_the_hour_is_over() -> None:
+    cal = _calibration()
+    first, second = GREY.isoformat(), (GREY + HOUR).isoformat()
+    cal.record_forecast([(GREY, 1000.0), (GREY + HOUR, 1200.0)], GREY - HOUR, stratus={GREY, GREY + HOUR})
+    assert cal.stratus_log == {first, second}
+    # a newer run sees the lid open an hour earlier
+    cal.record_forecast([(GREY, 1000.0), (GREY + HOUR, 2500.0)], GREY, stratus={GREY})
+    assert cal.stratus_log == {first}
+    # once the hour is over its mark stays, whatever a later run says of it
+    cal.record_forecast([(GREY, 3000.0), (GREY + HOUR, 2500.0)], GREY + HOUR)
+    assert cal.stratus_log == {first} and cal.log[first] == 1000.0
+    # an hour with snow on the modules is not learned at all, lid or no lid
+    cal.record_forecast([(GREY + HOUR, 2500.0)], GREY + HOUR, skip={GREY + HOUR}, stratus={GREY + HOUR})
+    assert second not in cal.stratus_log and second not in cal.log
+    # the marks go with the forecasts they belong to
+    cal.record_forecast([], GREY + timedelta(days=3))
+    assert cal.stratus_log == set() and cal.log == {}
+
+
+def test_what_was_learned_under_low_stratus_survives() -> None:
+    cal = _calibration("x")
+    for day in range(5):
+        _grey_hour(cal, GREY + timedelta(days=day), 1000.0, 700.0)
+    ahead = GREY + timedelta(days=5)
+    cal.record_forecast([(ahead, 900.0)], ahead - 4 * HOUR, stratus={ahead})
+    kept = cal.as_dict()
+    assert len(kept["stratus"]) == 3 and kept["stratus_hours"] == sorted(cal.stratus_log) and ahead.isoformat() in kept["stratus_hours"]
+    again = Calibration.from_dict(kept, "x", LAT, LON)
+    assert again.samples == 5 and again.stratus_log == cal.stratus_log and abs(again.stratus_factor - cal.stratus_factor) < 1e-3
+    # what an earlier version kept knows no low stratus: nothing learned, nothing marked, the rest as it was
+    old = {key: value for key, value in kept.items() if key not in ("stratus", "stratus_hours")}
+    earlier = Calibration.from_dict(old, "x", LAT, LON)
+    assert earlier.stratus == [0.0, 0.0, 0.0] and earlier.stratus_log == set() and not earlier.stratus_learned
+    assert earlier.samples == 5 and earlier.log == cal.log
+    # sums that are no three figures are dropped
+    assert Calibration.from_dict({**kept, "stratus": [1.0, 2.0]}, "x", LAT, LON).stratus == [0.0, 0.0, 0.0]

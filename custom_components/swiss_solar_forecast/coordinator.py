@@ -13,6 +13,11 @@ plant's own energy meter (a factor per place of the sun in the sky,
 learned from what was forecast and what was counted). With the meter the
 coordinator also keeps the record of how well the forecast did.
 
+The forecast's cloud layers tell the hours under low stratus, the grey
+lid over the plateau. They are shown, and with the meter they are learned
+apart from the rest. The layers only mark hours and move slowly, so they
+are read with every third run.
+
 An hour that is over stays as it was forecast when it ended: later runs
 leave it alone, and with the meter the day's sum takes what was counted
 in it. All of it lives in a small store of the entry, so a restart loses
@@ -41,7 +46,7 @@ from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
-from . import nowcast
+from . import fog, nowcast
 from .accuracy import Accuracy
 from .calibration import Calibration, energy_wh
 from .const import (
@@ -74,6 +79,8 @@ from .const import (
     HOURLY_PARAMS,
     KEPT_PARAM_HOURS,
     KEPT_PARAMS,
+    PARAM_CLOUD_LOW,
+    PARAM_CLOUD_MID,
     PARAM_DIFFUSE,
     PARAM_GLOBAL,
     PARAM_PRECIPITATION,
@@ -104,7 +111,7 @@ _CHECK_INTERVAL = timedelta(minutes=15)
 # A kept run older than this is no forecast any more: the entities go unavailable.
 _FORECAST_MAX_AGE = timedelta(hours=12)
 # A costly series is read again when the run it came from is this old.
-_KEPT_PARAM_AGE = timedelta(hours=KEPT_PARAM_HOURS)
+_KEPT_PARAM_AGE = {param: timedelta(hours=hours) for param, hours in KEPT_PARAM_HOURS.items()}
 # The terrain is read once; after a failure the next try waits, longer each time.
 _HORIZON_RETRY = timedelta(hours=6)
 _HORIZON_RETRY_MAX = timedelta(days=7)
@@ -277,6 +284,8 @@ class ForecastSnapshot:
     diffuse_forecast: bool = False  # whether the diffuse share came from MeteoSwiss or was estimated
     snow_known: bool = False  # whether the snow could be followed (switched on, precipitation in the run)
     ground_snow: dict[datetime, float] = field(default_factory=dict)  # hour start -> mm of water on the ground
+    stratus_known: bool = False  # whether the cloud layers are there to tell low stratus from
+    stratus: frozenset[datetime] = frozenset()  # the starts of the daylight hours the forecast sees under low stratus
     # traffic since local midnight
     traffic_day: datetime | None = None
     requests_today: int = 0
@@ -645,10 +654,12 @@ class SolarForecastCoordinator(DataUpdateCoordinator[ForecastSnapshot]):
         snap.requests_today += requests
         snap.bytes_today += nbytes
 
-    def _kept_serves(self, param: str, run: datetime, max_age: timedelta = _KEPT_PARAM_AGE) -> bool:
-        """Whether the series of a costly parameter, read from an earlier run, is young enough to serve this run."""
+    def _kept_serves(self, param: str, run: datetime, max_age: timedelta | None = None) -> bool:
+        """Whether the series of a kept parameter, read from an earlier run, is young enough to serve this run."""
         kept_run = self._series_run.get(param)
-        return param in KEPT_PARAMS and bool(self._series.get(param)) and kept_run is not None and timedelta(0) <= run - kept_run < max_age
+        if param not in KEPT_PARAMS or not self._series.get(param) or kept_run is None:
+            return False
+        return timedelta(0) <= run - kept_run < (max_age or _KEPT_PARAM_AGE[param])
 
     @staticmethod
     def _usable(snap: ForecastSnapshot, now: datetime) -> bool:
@@ -688,13 +699,25 @@ class SolarForecastCoordinator(DataUpdateCoordinator[ForecastSnapshot]):
             per_plane = [[_under_snow(h, p.plane, covers[h.start][number]) for h in hours] for number, (p, hours) in enumerate(zip(self.planes, per_plane))]
             self._store.async_delay_save(self._kept, _SAVE_DELAY)
         raw_plant = _sum_hours(per_plane, self.inverter_kw, [p.plane.kwp for p in self.planes])
+        # the hours under low stratus, told from the forecast as it came (before the station's correction)
+        low = dict(self._series.get(PARAM_CLOUD_LOW, []))
+        mid = dict(self._series.get(PARAM_CLOUD_MID, []))
+        grey = fog.stratus_hours(low, mid, precipitation, ghi, dhi)
+        snap.stratus_known = bool(low) and bool(mid)
+        snap.stratus = frozenset(h.start for h in raw_plant if h.start in grey and (h.ghi or 0) > 0)
         calibration = self.calibration
         if calibration is not None:
             # what is forecast now is what the meter will be compared with; then the learned factors apply.
             # Hours with snow on the modules are left out: the snow is no property of the plant.
-            calibration.record_forecast([(h.start, h.energy_wh) for h in raw_plant], now, skip={h.start for h in raw_plant if h.snow_cover > COVER_SHOWN})
+            # Hours under low stratus are marked: they are learned together, apart from the sky.
+            calibration.record_forecast(
+                [(h.start, h.energy_wh) for h in raw_plant],
+                now,
+                skip={h.start for h in raw_plant if h.snow_cover > COVER_SHOWN},
+                stratus=snap.stratus,
+            )
             self._store.async_delay_save(self._kept, _SAVE_DELAY)
-            factors = {h.start: calibration.factor_at(h.start) for h in raw_plant}
+            factors = {h.start: calibration.factor_at(h.start, h.start in snap.stratus) for h in raw_plant}
 
             def scaled(hour: HourForecast, limit_kw: float) -> HourForecast:
                 factor = factors.get(hour.start, 1.0)

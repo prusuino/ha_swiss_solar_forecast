@@ -184,6 +184,9 @@
       "snow_cover": {
         "name": "Neige sur les modules"
       },
+      "low_stratus_today": {
+        "name": "Stratus bas aujourd'hui"
+      },
       "run": {
         "name": "Run de prévision"
       },

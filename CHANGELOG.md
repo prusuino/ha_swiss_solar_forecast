@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- **Low stratus.** The hours the forecast sees under low stratus — a closed low cloud layer under an open sky, no precipitation, diffuse light — are recognised from the cloud layers of the MeteoSwiss local forecast. A new sensor, *Low stratus today*, shows how many of today's daylight hours lie under it, which ones, when it is expected to open and how many there are tomorrow. The forecast itself is not changed by it.
+- **Learned on their own.** With a yield meter, hours under low stratus no longer go into the factors of the sky: they get one factor of their own, shown as attributes of *Calibration factor* and in the diagnostics, and the coming hours under low stratus are multiplied with it once it has evidence. What was learned so far stays as it is.
+- **Traffic.** Two more parameter files (low and medium-high cloud cover) are read with every third model run and their series kept in between: about 370 requests and 0.6 MB a day more. README and SECURITY.md say so.
+- Tests for the recognition, the learning and the reading.
+
 ## 0.4.2 — 2026-11-12
 
 - **Fix: sensors of a plane that is gone no longer stay behind.** After a reconfigure that removed a plane, left the plant with a single plane, or replaced a roof of the cadastre by a plane entered by hand, the sensors that no longer exist (`plane3_…`, the per-plane sensors, *Typical day (cadastre)* and *Forecast vs typical day*) stayed in the entity list as unavailable. They are now removed when the entry loads; the sensors that remain keep their entity and their history.

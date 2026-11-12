@@ -29,6 +29,13 @@ The learning is deliberately cautious:
   which the forecast itself sees snow on the modules: what the snow takes
   is no property of the plant to be learned.
 
+Hours under low stratus (the forecast's low clouds closed, the sky above
+them open) are learned apart from the sky. Under the grey lid all light
+is diffuse: a shadow learned for the sun's place does not apply, and how
+well the forecast does on such days is a matter of its own. These hours
+have one factor together, held near the plant's overall factor while the
+evidence is thin, and they leave the parts of the sky alone.
+
 Pure arithmetic and plain data, so it can be tested without a clock.
 """
 from __future__ import annotations
@@ -46,6 +53,12 @@ PRIOR_BIN = 3.0  # samples' worth of belief that a bin's factor is the overall o
 # faded count settles near 14 with a sample every day).
 FULL_TRUST_OVERALL = 60.0
 FULL_TRUST_BIN = 10.0
+# The hours under low stratus come in bunches (up to eight on a grey day)
+# and in one season only, so their samples fade more slowly: a memory of
+# some ten grey days.
+DECAY_STRATUS = 0.985
+PRIOR_STRATUS = 12.0  # samples' worth of belief that the stratus factor is the plant's overall one
+FULL_TRUST_STRATUS = 40.0
 FACTOR_MIN = 0.1
 FACTOR_MAX = 1.5
 LOG_KEEP = timedelta(hours=48)
@@ -102,6 +115,8 @@ class Calibration:
     lon: float = 0.0
     bins: dict[str, list[float]] = field(default_factory=dict)  # part of the sky -> [measured Wh, forecast Wh, samples], faded
     log: dict[str, float] = field(default_factory=dict)  # hour start (ISO, UTC) -> uncalibrated forecast Wh
+    stratus: list[float] = field(default_factory=lambda: [0.0, 0.0, 0.0])  # the hours under low stratus: [measured Wh, forecast Wh, samples], faded
+    stratus_log: set[str] = field(default_factory=set)  # the logged hours (ISO, UTC) the forecast saw under low stratus
     reading_time: str = ""  # the full hour (ISO, UTC) of the last meter reading
     reading_wh: float | None = None
     samples: int = 0  # hours learned in total
@@ -109,20 +124,31 @@ class Calibration:
 
     # ------------------------------------------------------------- forecast
 
-    def record_forecast(self, hours: list[tuple[datetime, float]], now: datetime, skip: Collection[datetime] = ()) -> None:
+    def record_forecast(
+        self, hours: list[tuple[datetime, float]], now: datetime, skip: Collection[datetime] = (), stratus: Collection[datetime] = ()
+    ) -> None:
         """Keep the uncalibrated forecast (hour start, Wh) of the hours not
         yet over; what was forecast for a finished hour stays as it was.
-        The hours in `skip` (snow on the modules) are not to be learned."""
+        The hours in `skip` (snow on the modules) are not to be learned,
+        the hours in `stratus` (low stratus in the forecast) are marked:
+        they are learned apart from the sky."""
         for start, wh in hours:
             if start + timedelta(hours=1) <= now:
                 continue
+            key = _key(start)
             if start in skip:
-                self.log.pop(_key(start), None)
+                self.log.pop(key, None)
+                self.stratus_log.discard(key)
+                continue
+            self.log[key] = round(wh, 1)
+            if start in stratus:
+                self.stratus_log.add(key)
             else:
-                self.log[_key(start)] = round(wh, 1)
+                self.stratus_log.discard(key)
         limit = _key(now - LOG_KEEP)
         for key in [k for k in self.log if k < limit]:
             del self.log[key]
+        self.stratus_log = {key for key in self.stratus_log if key >= limit}
 
     # ---------------------------------------------------------------- meter
 
@@ -146,14 +172,20 @@ class Calibration:
 
     def learn(self, start: datetime, measured_wh: float, min_wh: float, max_wh: float) -> bool:
         """One finished hour: what the meter counted against what was forecast."""
-        forecast = self.log.get(_key(start))
+        hour = _key(start)
+        forecast = self.log.get(hour)
         if forecast is None or forecast < min_wh:
             return False  # nothing forecast worth comparing (night, deep overcast)
         if measured_wh <= 0 or measured_wh > max_wh:
             return False  # outage, snow, meter reset or a jump no plant of this size makes
-        key = self.bin_of(start)
-        measured, expected, count = self.bins.get(key, [0.0, 0.0, 0.0])
-        self.bins[key] = [measured * DECAY + measured_wh, expected * DECAY + forecast, count * DECAY + 1.0]
+        if hour in self.stratus_log:
+            # under the grey lid the sun's place explains nothing: these hours are learned together
+            measured, expected, count = self.stratus
+            self.stratus = [measured * DECAY_STRATUS + measured_wh, expected * DECAY_STRATUS + forecast, count * DECAY_STRATUS + 1.0]
+        else:
+            key = self.bin_of(start)
+            measured, expected, count = self.bins.get(key, [0.0, 0.0, 0.0])
+            self.bins[key] = [measured * DECAY + measured_wh, expected * DECAY + forecast, count * DECAY + 1.0]
         self.samples += 1
         self.last_sample = _key(start)
         return True
@@ -184,9 +216,25 @@ class Calibration:
         raw = min(2.0, max(0.05, entry[0] / entry[1]))
         return _clamp(_blend(raw, entry[2], overall, PRIOR_BIN, FULL_TRUST_BIN))
 
-    def factor_at(self, start: datetime) -> float:
-        """The factor of the hour that starts at `start`."""
-        return self.factor(self.bin_of(start))
+    @property
+    def stratus_learned(self) -> bool:
+        """Whether hours under low stratus have been learned."""
+        return self.stratus[1] > 0 and self.stratus[2] > 0
+
+    @property
+    def stratus_factor(self) -> float:
+        """The factor of the hours under low stratus: their own evidence, held near the overall factor while it is thin."""
+        overall = self.overall
+        if not self.stratus_learned:
+            return overall
+        measured, expected, count = self.stratus
+        raw = min(2.0, max(0.05, measured / expected))
+        return _clamp(_blend(raw, count, overall, PRIOR_STRATUS, FULL_TRUST_STRATUS))
+
+    def factor_at(self, start: datetime, stratus: bool = False) -> float:
+        """The factor of the hour that starts at `start`: of the sun's place
+        in it, or of the low stratus when the forecast sees the hour under it."""
+        return self.stratus_factor if stratus else self.factor(self.bin_of(start))
 
     def factors(self) -> dict[str, float]:
         """The factors of the parts of the sky with evidence, from north over east."""
@@ -200,6 +248,8 @@ class Calibration:
             "bins_by": BINS_BY,
             "bins": {key: [round(v, 3) for v in values] for key, values in self.bins.items()},
             "log": self.log,
+            "stratus": [round(v, 3) for v in self.stratus],
+            "stratus_hours": sorted(self.stratus_log),
             "reading_time": self.reading_time,
             "reading_wh": self.reading_wh,
             "samples": self.samples,
@@ -220,6 +270,8 @@ class Calibration:
             else:
                 bins = _from_hours(kept, last_sample, lat, lon)
             log = {str(key): float(value) for key, value in (data.get("log") or {}).items()}
+            # absent in what an earlier version kept: nothing learned under low stratus yet
+            stratus = [float(v) for v in (data.get("stratus") or [])][:3]
             reading = data.get("reading_wh")
             return cls(
                 fingerprint=fingerprint,
@@ -227,6 +279,8 @@ class Calibration:
                 lon=lon,
                 bins=bins,
                 log=log,
+                stratus=stratus if len(stratus) == 3 else [0.0, 0.0, 0.0],
+                stratus_log={str(key) for key in (data.get("stratus_hours") or [])},
                 reading_time=str(data.get("reading_time") or ""),
                 reading_wh=None if reading is None else float(reading),
                 samples=int(data.get("samples") or 0),

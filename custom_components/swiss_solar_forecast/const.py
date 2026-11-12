@@ -75,7 +75,9 @@ PARAM_DIFFUSE = "ods000h0"  # diffuse radiation, W/m², hourly mean
 PARAM_TEMPERATURE = "tre200h0"  # air temperature 2 m, °C, hourly mean
 PARAM_PRECIPITATION = "rre150h0"  # precipitation, mm, hourly total
 PARAM_WIND = "fu3010h0"  # wind speed 10 m above ground, km/h, hourly mean
-HOURLY_PARAMS = (PARAM_GLOBAL, PARAM_DIFFUSE, PARAM_TEMPERATURE, PARAM_PRECIPITATION, PARAM_WIND)
+PARAM_CLOUD_LOW = "nprolohs"  # low cloud cover, share of the sky (0…1)
+PARAM_CLOUD_MID = "npromths"  # medium-high cloud cover, share of the sky (0…1)
+HOURLY_PARAMS = (PARAM_GLOBAL, PARAM_DIFFUSE, PARAM_TEMPERATURE, PARAM_PRECIPITATION, PARAM_WIND, PARAM_CLOUD_LOW, PARAM_CLOUD_MID)
 PARAM_STATION_GLOBAL = "gre000z0"  # global radiation a station measured, W/m², ten-minute mean
 PROBE_PARAM = "jp2000d0"  # a small daily file: one HEAD request tells whether a run exists
 
@@ -86,9 +88,11 @@ DATE_MAJOR_PARAMS = frozenset({"tre200h0"})
 # One point out of a file grouped by timestamp costs a read in every one of
 # its 200 blocks, some 2.3 MB, where a file grouped by point costs 40 KB. The
 # temperature forecast changes little from one hourly run to the next, so its
-# series is kept and read again only when it is this many hours old.
-KEPT_PARAMS = frozenset({PARAM_TEMPERATURE})
-KEPT_PARAM_HOURS = 6
+# series is kept and read again only when it is this many hours old. The two
+# cloud layers are cheap files, but they only mark the hours under low
+# stratus, and that picture moves slowly: every third run is enough.
+KEPT_PARAM_HOURS = {PARAM_TEMPERATURE: 6, PARAM_CLOUD_LOW: 3, PARAM_CLOUD_MID: 3}
+KEPT_PARAMS = frozenset(KEPT_PARAM_HOURS)
 
 # --- Model constants ---------------------------------------------------------
 ALBEDO = 0.2  # ground reflection used for the reflected share

@@ -184,6 +184,9 @@
       "snow_cover": {
         "name": "Neve sui moduli"
       },
+      "low_stratus_today": {
+        "name": "Nebbia alta oggi"
+      },
       "run": {
         "name": "Run di previsione"
       },

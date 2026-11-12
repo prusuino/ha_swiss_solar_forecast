@@ -1,8 +1,8 @@
 """Setup with a faked run: the plant's and the planes' sensors, the
 cadastre yardstick, the energy dashboard hook, the repair notice when the
 data cannot be read, unloading, the terrain horizon, the
-self-calibration against a yield meter, the snow on the modules and the
-forecast's accuracy."""
+self-calibration against a yield meter, the snow on the modules, the
+hours under low stratus and the forecast's accuracy."""
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
@@ -657,8 +657,95 @@ async def test_the_run_check_is_counted_with_the_requests_it_took(hass: HomeAssi
         assert await cost_of_a_check() == besides + 8
 
 
+@freeze_time(WINTER)
+async def test_low_stratus_today(hass: HomeAssistant, enable_custom_integrations, stratus_forecast) -> None:
+    await hass.config.async_set_time_zone("Europe/Zurich")
+    entry = _entry()
+    await _setup(hass, entry)
+    grey = hass.states.get(PREFIX + "low_stratus_today")
+    # the lid lies over the morning: three of the day's seven hours of light, and it opens at noon local time
+    assert grey.state == "3" and grey.attributes["unit_of_measurement"] == "h"
+    assert grey.attributes["hours"] == ["09:00", "10:00", "11:00"]
+    assert grey.attributes["clears_at"] == "2026-01-15T11:00:00+00:00"
+    assert grey.attributes["daylight_hours"] == 7
+    assert grey.attributes["tomorrow"] == 7  # it stays all day
+    snap = entry.runtime_data.data
+    # only hours with light count: three today, seven tomorrow, none the day after
+    assert snap.stratus_known and len(snap.stratus) == 10
+    assert datetime(2026, 1, 15, 5, 0, tzinfo=UTC) not in snap.stratus and datetime(2026, 1, 15, 10, 0, tzinfo=UTC) in snap.stratus
+    diagnostics = await async_get_config_entry_diagnostics(hass, entry)
+    assert diagnostics["forecast"]["low_stratus_known"] is True
+    marked = [hour["start"] for hour in diagnostics["forecast"]["hours"] if hour["low_stratus"]]
+    assert len(marked) == 10 and marked[0] == "2026-01-15T08:00:00+00:00" and marked[-1] == "2026-01-16T14:00:00+00:00"
+    # the hours are shown, the forecast is the model's: without a yield meter nothing is learned from them
+    ahead = datetime(2026, 1, 16, 10, 30, tzinfo=UTC)
+    assert snap.plant.hour_at(ahead).energy_wh == snap.raw_plant.hour_at(ahead).energy_wh > 0
+
+
+@freeze_time(WINTER)
+async def test_a_clear_winter_day_has_no_low_stratus(hass: HomeAssistant, enable_custom_integrations, snow_forecast) -> None:
+    await hass.config.async_set_time_zone("Europe/Zurich")
+    await _setup(hass, _entry())
+    grey = hass.states.get(PREFIX + "low_stratus_today")
+    assert grey.state == "0" and grey.attributes["hours"] == [] and grey.attributes["clears_at"] is None
+    assert grey.attributes["daylight_hours"] == 7 and grey.attributes["tomorrow"] == 0
+
+
+@freeze_time(NOW)
+async def test_low_stratus_is_unknown_without_the_cloud_layers(hass: HomeAssistant, enable_custom_integrations, fake_forecast) -> None:
+    entry = _entry()
+    await _setup(hass, entry)
+    grey = hass.states.get(PREFIX + "low_stratus_today")
+    assert grey is not None and grey.state == "unknown" and "hours" not in grey.attributes
+    assert entry.runtime_data.data.stratus == frozenset() and not entry.runtime_data.data.stratus_known
+    diagnostics = await async_get_config_entry_diagnostics(hass, entry)
+    assert diagnostics["forecast"]["low_stratus_known"] is False
+    assert not any(hour["low_stratus"] for hour in diagnostics["forecast"]["hours"])
+
+
+async def test_hours_under_low_stratus_are_learned_on_their_own(hass: HomeAssistant, enable_custom_integrations, stratus_forecast, freezer) -> None:
+    freezer.move_to(WINTER)
+    await hass.config.async_set_time_zone("Europe/Zurich")
+    hass.states.async_set("sensor.pv_total", "1000.0", {"unit_of_measurement": "kWh"})
+    entry = _entry(options={"yield_sensor": "sensor.pv_total"})
+    await _setup(hass, entry)
+    calibration = entry.runtime_data.calibration
+    grey_hour = datetime(2026, 1, 15, 10, 0, tzinfo=UTC)
+    assert grey_hour.isoformat() in calibration.stratus_log and (grey_hour + timedelta(hours=1)).isoformat() not in calibration.stratus_log
+    factor = hass.states.get(PREFIX + "calibration_factor")
+    assert factor.attributes["low_stratus"] is None and factor.attributes["low_stratus_samples"] == 0 and factor.attributes["hourly"] == {}
+
+    # 10:00 UTC: the first reading; 11:00: under the lid the plant made 60 % of what was forecast for the hour
+    await _full_hour(hass, freezer, datetime(2026, 1, 15, 10, 0, 5, tzinfo=UTC))
+    forecast_wh = entry.runtime_data.data.raw_plant.hour_at(datetime(2026, 1, 15, 10, 30, tzinfo=UTC)).energy_wh
+    assert forecast_wh > 300  # enough to learn from on 15 kWp
+    hass.states.async_set("sensor.pv_total", str(1000.0 + 0.6 * forecast_wh / 1000.0), {"unit_of_measurement": "kWh"})
+    await _full_hour(hass, freezer, datetime(2026, 1, 15, 11, 0, 5, tzinfo=UTC))
+
+    factor = hass.states.get(PREFIX + "calibration_factor")
+    assert factor.attributes["samples"] == 1 and factor.attributes["last_sample"] == "2026-01-15T10:00:00+00:00"
+    # no part of the sky learned from it and the plant's factor stands
+    assert factor.state == "1.0" and factor.attributes["sun_position"] == {}
+    # one hour is weak evidence
+    lid = factor.attributes["low_stratus"]
+    assert factor.attributes["low_stratus_samples"] == 1 and 0.9 < lid < 1.0
+    # today's hours under the lid are shown with it, in local time
+    assert factor.attributes["hourly"] == {"09:00": lid, "10:00": lid, "11:00": lid}
+    # tomorrow's grey hours are forecast with it, the clear hours of the day after as the model has them
+    snap = entry.runtime_data.data
+    grey_ahead, clear_ahead = datetime(2026, 1, 16, 10, 30, tzinfo=UTC), datetime(2026, 1, 17, 10, 30, tzinfo=UTC)
+    assert abs(snap.plant.hour_at(grey_ahead).energy_wh / snap.raw_plant.hour_at(grey_ahead).energy_wh - calibration.stratus_factor) < 1e-3
+    assert abs(snap.plant.hour_at(clear_ahead).energy_wh / snap.raw_plant.hour_at(clear_ahead).energy_wh - 1.0) < 1e-6
+
+    diagnostics = await async_get_config_entry_diagnostics(hass, entry)
+    assert diagnostics["calibration"]["samples"] == 1 and diagnostics["calibration"]["factors"] == {}
+    assert diagnostics["calibration"]["low_stratus"]["factor"] == lid and diagnostics["calibration"]["low_stratus"]["sums"][2] == 1.0
+    assert diagnostics["calibration"]["low_stratus"]["marked_hours"] == 10  # today's three and tomorrow's seven
+
+
 async def test_the_temperature_is_not_read_with_every_run(hass: HomeAssistant, enable_custom_integrations, freezer) -> None:
-    """The temperature file costs many times the others: its series is kept for some hours."""
+    """The temperature file costs many times the others: its series is kept for some hours.
+    The two cloud layers change more slowly than the light: they are kept too, for a shorter time."""
     hour = timedelta(hours=1)
     asked: list[tuple[datetime, tuple[str, ...]]] = []
     unreadable: set[str] = set()
@@ -684,26 +771,29 @@ async def test_the_temperature_is_not_read_with_every_run(hass: HomeAssistant, e
         coordinator = entry.runtime_data
         assert asked == [(WINTER_RUN, HOURLY_PARAMS)]
         assert coordinator.series_runs == {param: WINTER_RUN for param in HOURLY_PARAMS}
-        assert (coordinator.data.last_requests, coordinator.data.last_bytes) == (130, 200_000)
+        assert (coordinator.data.last_requests, coordinator.data.last_bytes) == (182, 280_000)
 
-        # the next runs read the four cheap files and go on with the temperature they have
-        for later in (1, 5):
+        # the next run reads the four cheap files and goes on with the temperature and the cloud layers it has;
+        # after three hours the cloud layers are read again, the temperature is not
+        clouds = ("nprolohs", "npromths")
+        for later, kept in ((1, ("tre200h0", *clouds)), (5, ("tre200h0",))):
             await at(WINTER_RUN + later * hour)
             run, params = asked[-1]
-            assert run == WINTER_RUN + later * hour and params == tuple(p for p in HOURLY_PARAMS if p != "tre200h0")
+            assert run == WINTER_RUN + later * hour and params == tuple(p for p in HOURLY_PARAMS if p not in kept)
             assert coordinator.series_runs["tre200h0"] == WINTER_RUN and coordinator.series_runs["gre000h0"] == run
-            assert coordinator.data.run == run and coordinator.data.missing == []
+            assert coordinator.series_runs["nprolohs"] == coordinator.series_runs["npromths"] == (WINTER_RUN if later == 1 else run)
+            assert coordinator.data.run == run and coordinator.data.missing == [] and coordinator.data.stratus_known
             assert coordinator.data.plant.hour_at(dt_now(freezer)).temperature == -3.0
         diagnostics = await async_get_config_entry_diagnostics(hass, entry)
         assert diagnostics["forecast"]["series_runs"]["tre200h0"] == "2026-01-15T04:00:00+00:00"
         assert diagnostics["forecast"]["series_runs"]["gre000h0"] == "2026-01-15T09:00:00+00:00"
         # what the last read cost stays visible, whatever was asked in between
-        assert diagnostics["forecast"]["last_read"] == {"requests": 104, "bytes": 160_000}
-        assert diagnostics["forecast"]["requests_today"] > 130 + 2 * 104
+        assert diagnostics["forecast"]["last_read"] == {"requests": 156, "bytes": 240_000}
+        assert diagnostics["forecast"]["requests_today"] > 182 + 104 + 156
 
-        # after six hours it is read again
+        # after six hours the temperature is read again (the cloud layers, read an hour before, are not)
         await at(WINTER_RUN + 6 * hour)
-        assert asked[-1] == (WINTER_RUN + 6 * hour, HOURLY_PARAMS)
+        assert asked[-1] == (WINTER_RUN + 6 * hour, tuple(p for p in HOURLY_PARAMS if p not in clouds))
         assert coordinator.series_runs["tre200h0"] == WINTER_RUN + 6 * hour
 
         # a temperature file that cannot be read: the kept series serves on, for as long as a forecast counts

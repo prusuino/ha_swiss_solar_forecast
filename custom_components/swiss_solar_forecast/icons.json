@@ -19,6 +19,7 @@
       "station_correction": { "default": "mdi:radio-tower" },
       "calibration_factor": { "default": "mdi:tune-variant" },
       "snow_cover": { "default": "mdi:snowflake" },
+      "low_stratus_today": { "default": "mdi:weather-fog" },
       "accuracy_7_days": { "default": "mdi:bullseye-arrow" },
       "accuracy_30_days": { "default": "mdi:bullseye-arrow" }
     }

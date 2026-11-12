@@ -1,6 +1,7 @@
 """Sensors of the plant (the planes' sum) and of every plane: energy of
 today, tomorrow and the rest of today, power now and next hour, today's
-peak, the cadastre's typical day, the snow on the modules, and diagnostics
+peak, the cadastre's typical day, the snow on the modules, the hours under
+low stratus, and diagnostics
 about the run, the traffic, the terrain horizon, the correction from a
 measurement station, the self-calibration and how accurate the forecast
 was."""
@@ -11,7 +12,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorStateClass
-from homeassistant.const import EntityCategory, UnitOfEnergy, UnitOfPower
+from homeassistant.const import EntityCategory, UnitOfEnergy, UnitOfPower, UnitOfTime
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -19,7 +20,7 @@ from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
-from . import SolarForecastConfigEntry
+from . import SolarForecastConfigEntry, fog
 from .const import ATTRIBUTION, DOMAIN
 from .coordinator import ForecastSnapshot, PlaneConfig, Series, SolarForecastCoordinator
 from .device import device_info, entry_suffix
@@ -41,6 +42,8 @@ _META: dict[str, tuple[SensorDeviceClass | None, str | None, SensorStateClass | 
     # from the Sonnendach cadastre, only for planes chosen there
     "typical_day_energy": (SensorDeviceClass.ENERGY, UnitOfEnergy.KILO_WATT_HOUR, None, True, None),
     "forecast_vs_typical": (None, "%", SensorStateClass.MEASUREMENT, True, None),
+    # today's daylight hours the forecast sees under low stratus (unknown while a run carries no cloud layers)
+    "low_stratus_today": (SensorDeviceClass.DURATION, UnitOfTime.HOURS, None, True, None),
     "run": (SensorDeviceClass.TIMESTAMP, None, None, False, EntityCategory.DIAGNOSTIC),
     "requests_today": (None, None, SensorStateClass.TOTAL, False, EntityCategory.DIAGNOSTIC),
     "bytes_today": (SensorDeviceClass.DATA_SIZE, "B", SensorStateClass.TOTAL, False, EntityCategory.DIAGNOSTIC),
@@ -173,7 +176,7 @@ class _Base(CoordinatorEntity[SolarForecastCoordinator], SensorEntity):
             self._attr_suggested_display_precision = 2
         elif key in _ACCURACY_DAYS:
             self._attr_suggested_display_precision = 1
-        elif key in ("snow_cover", "station_correction"):
+        elif key in ("snow_cover", "station_correction", "low_stratus_today"):
             self._attr_suggested_display_precision = 0
 
     @property
@@ -183,6 +186,11 @@ class _Base(CoordinatorEntity[SolarForecastCoordinator], SensorEntity):
     def _days(self):
         today = dt_util.now().date()
         return today, today + timedelta(days=1), today + timedelta(days=2)
+
+
+def _daylight(snap: ForecastSnapshot) -> list[datetime]:
+    """The starts of the hours in which the forecast has light."""
+    return [hour.start for hour in snap.raw_plant.hours if (hour.ghi or 0) > 0]
 
 
 class PlantSensor(_Base):
@@ -214,6 +222,8 @@ class PlantSensor(_Base):
         if self._key == "snow_cover":
             hour = snap.plant.hour_at(dt_util.utcnow())
             return round(hour.snow_cover * 100) if hour and snap.snow_known else None
+        if self._key == "low_stratus_today":
+            return len(fog.day_hours(snap.stratus, _daylight(snap), day0, dt_util.as_local)) if snap.stratus_known else None
         if self._key == "forecast_vs_typical":
             # like against like: only the planes with a cadastre roof have an expectation
             typical = self.coordinator.typical_day_wh(day0)
@@ -258,13 +268,22 @@ class PlantSensor(_Base):
             today = {}
             for hour in snap.raw_plant.hours:
                 local = dt_util.as_local(hour.start)
-                if local.date() == day0 and (hour.ghi or 0) > 0 and (key := calibration.bin_of(hour.start)) in learned:
+                if local.date() != day0 or (hour.ghi or 0) <= 0:
+                    continue
+                if hour.start in snap.stratus:
+                    if calibration.stratus_learned:
+                        today[local.strftime("%H:%M")] = round(calibration.stratus_factor, 3)
+                elif (key := calibration.bin_of(hour.start)) in learned:
                     today[local.strftime("%H:%M")] = learned[key]
             return {
-                # today's hours whose part of the sky has evidence of its own (the others take the overall factor)
+                # today's hours whose part of the sky has evidence of its own (the others take the overall factor),
+                # and the hours under low stratus once such hours were learned
                 "hourly": today,
                 # all that was learned, by the sun's bearing and height in degrees (the lower edges of each part)
                 "sun_position": learned,
+                # the factor of the hours under low stratus and how many of them stand behind it (older ones fade)
+                "low_stratus": round(calibration.stratus_factor, 3) if calibration.stratus_learned else None,
+                "low_stratus_samples": round(calibration.stratus[2], 1),
                 "samples": calibration.samples,
                 "last_sample": calibration.last_sample or None,
                 "yield_sensor": self.coordinator.yield_sensor,
@@ -290,6 +309,20 @@ class PlantSensor(_Base):
             figures = accuracy.figures(self._days()[0], _ACCURACY_DAYS[self._key])
             del figures["day_ahead_accuracy"]  # the state
             return figures
+        if self._key == "low_stratus_today":
+            if not snap.stratus_known:
+                return None
+            day0, day1, _day2 = self._days()
+            lit = _daylight(snap)
+            clears = fog.clears_at(snap.stratus, lit, day0, dt_util.as_local)
+            return {
+                # the hours of today under low stratus, by their start in local time
+                "hours": [dt_util.as_local(start).strftime("%H:%M") for start in fog.day_hours(snap.stratus, lit, day0, dt_util.as_local)],
+                # when the lid is expected to open: the end of today's last such hour, if daylight follows it
+                "clears_at": clears.isoformat() if clears else None,
+                "daylight_hours": sum(1 for start in lit if dt_util.as_local(start).date() == day0),
+                "tomorrow": len(fog.day_hours(snap.stratus, lit, day1, dt_util.as_local)),
+            }
         if self._key == "snow_cover":
             now = dt_util.utcnow()
             hour = snap.plant.hour_at(now)
