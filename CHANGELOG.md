@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.5.0 — 2026-11-12
 
 - **Low stratus.** The hours the forecast sees under low stratus — a closed low cloud layer under an open sky, no precipitation, diffuse light — are recognised from the cloud layers of the MeteoSwiss local forecast. A new sensor, *Low stratus today*, shows how many of today's daylight hours lie under it, which ones, when it is expected to open and how many there are tomorrow. The forecast itself is not changed by it.
 - **Learned on their own.** With a yield meter, hours under low stratus no longer go into the factors of the sky: they get one factor of their own, shown as attributes of *Calibration factor* and in the diagnostics, and the coming hours under low stratus are multiplied with it once it has evidence. What was learned so far stays as it is.
