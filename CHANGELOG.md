@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Licence.** The source code is now under the GNU General Public License v3.0 (GPL-3.0). Versions up to and including 0.6.0 stay under the MIT License they were published with.
+
 ## 0.6.0 — 2026-11-12
 
 - **Learns what the weather model gets wrong, by the kind of sky.** The measurement station that corrects the hours just ahead now also teaches: every hour it has finished is set against the forecast as it stood three hours earlier and sorted by the sky the forecast expected — clear, mixed or grey. Once a kind of sky has six such hours, its factor corrects the forecast radiation of the coming hours with that sky, from where the correction of the last hour fades to the end of the forecast. Cautious by design: held near 1 while the hours are few, limited to 0.5–1.5, fading memory, weighted by the station's distance. For everyone with a station within 25 km: no meter, no setting, no extra traffic; it goes with the existing option *Correction from a measurement station*.
