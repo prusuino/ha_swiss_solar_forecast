@@ -19,7 +19,9 @@ in it. All of it lives in a small store of the entry, so a restart loses
 nothing.
 
 It wakes every 15 minutes, asks with one HEAD request whether a new run
-exists and reads the files only then, with range requests. While the sun
+exists (with a second one in the minutes after the full hour, while the
+run of that hour is not out yet) and reads the files only then, with
+range requests. While the sun
 is up the same wake reads the station's small file of the day. The temperature
 file is laid out so that a read costs many times what the others cost; its
 series is kept and read again every few hours only. What a read cost is
@@ -84,6 +86,7 @@ from .issues import IssueReporter
 from .ogd import (
     OgdError,
     OgdUnavailable,
+    ReadStats,
     async_catalogue_latest_run,
     async_fetch_forecast,
     async_fetch_station_radiation,
@@ -743,16 +746,18 @@ class SolarForecastCoordinator(DataUpdateCoordinator[ForecastSnapshot]):
         session = async_get_clientsession(self.hass)
         snap = self._snapshot
         now = dt_util.utcnow()
+        probe = ReadStats()
         try:
-            run = await async_find_latest_run(session, now)
+            run = await async_find_latest_run(session, now, stats=probe)
             if run is None:
+                probe.requests += 1
                 run = await async_catalogue_latest_run(session)
         except OgdUnavailable as err:
             if self._usable(snap, now):
                 _LOGGER.debug("Run check failed, keeping run %s: %s", snap.run, err)
                 return snap
             raise UpdateFailed(str(err)) from err
-        self._account(snap, 1, 0)
+        self._account(snap, probe.requests, 0)
         if run is None:
             if self._usable(snap, now):
                 return snap

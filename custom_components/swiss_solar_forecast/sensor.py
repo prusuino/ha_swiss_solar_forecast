@@ -71,17 +71,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: SolarForecastConfigEntry
         "accuracy_7_days": coordinator.accuracy is not None,
         "accuracy_30_days": coordinator.accuracy is not None,
     }
-    registry = er.async_get(hass)
-    for key, wanted in optional.items():
-        # switched off in the options: the sensor goes, it would only stand there unavailable
-        if not wanted and (entity_id := registry.async_get_entity_id("sensor", DOMAIN, f"{entry.entry_id}_{key}")):
-            registry.async_remove(entity_id)
     entities: list[SensorEntity] = [
         PlantSensor(coordinator, entry, key) for key in _META if (any_roof or key not in _ROOF_KEYS) and optional.get(key, True)
     ]
     if len(coordinator.planes) > 1:
         for plane in coordinator.planes:
             entities += [PlaneSensor(coordinator, entry, key, plane) for key in _PLANE_KEYS if plane.has_roof or key not in _ROOF_KEYS]
+    # What the entry no longer provides leaves the registry, it would only
+    # stand there unavailable: a sensor switched off in the options, the
+    # sensors of a plane that was removed, the per-plane sensors of a plant
+    # left with one plane, the cadastre's yardstick of a roof now entered
+    # by hand.
+    provided = {entity.unique_id for entity in entities}
+    registry = er.async_get(hass)
+    for known in er.async_entries_for_config_entry(registry, entry.entry_id):
+        if known.domain == "sensor" and known.unique_id not in provided:
+            registry.async_remove(known.entity_id)
     async_add_entities(entities)
 
     @callback

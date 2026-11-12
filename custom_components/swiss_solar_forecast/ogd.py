@@ -29,8 +29,10 @@ import csv
 import io
 import logging
 import math
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import aiohttp
 
@@ -58,6 +60,19 @@ _WINDOW = 3 * 1024  # bytes read around a predicted row in a date-major file
 _SMALL_FILE = 300 * 1024  # below this a single read beats any search
 _MAX_PARALLEL = 6  # concurrent Range requests against one file
 _MAX_PARALLEL_FILES = 3  # forecast files read at once (each with up to _MAX_PARALLEL ranges)
+_MAX_READS = 1000  # Range requests one read of a file may take (the largest take a few hundred)
+_DAILY_FILE = 3 * 1024 * 1024  # a file of daily values has 1.3 MB, one of hourly values 30 MB
+
+# How the published files order their points: by number with the types
+# mixed, grouped by type with the numbers compared as text (1, 10, 100,
+# 11 …), or grouped by type with the numbers ascending. A search starts
+# with the order a few samples of the file agree with and tries the others
+# when it comes back empty.
+_ORDERS: tuple[Callable[[int, int], tuple[Any, ...]], ...] = (
+    lambda pid, ptype: (pid, ptype),
+    lambda pid, ptype: (ptype, str(pid)),
+    lambda pid, ptype: (ptype, pid),
+)
 
 
 class OgdError(Exception):
@@ -259,14 +274,18 @@ async def _head_size(session: aiohttp.ClientSession, url: str) -> int | None:
 
 
 async def async_find_latest_run(
-    session: aiohttp.ClientSession, now: datetime, probe_param: str = "jp2000d0", max_back: int = 6
+    session: aiohttp.ClientSession, now: datetime, probe_param: str = "jp2000d0", max_back: int = 6, stats: ReadStats | None = None
 ) -> datetime | None:
     """The newest run whose files exist, trying the current hour and the
     hours before it. None when none of them exists (an outage, or a gap
-    longer than `max_back` hours)."""
+    longer than `max_back` hours). A run is out a few minutes after its
+    hour, so the first request finds it nearly always; `stats` counts
+    the requests it took."""
     start = now.astimezone(UTC).replace(minute=0, second=0, microsecond=0)
     for back in range(max_back + 1):
         run = start - timedelta(hours=back)
+        if stats is not None:
+            stats.requests += 1
         if await _head_size(session, forecast_file_url(run, probe_param)) is not None:
             return run
     return None
@@ -309,12 +328,18 @@ class _RangeFile:
         self.size = size
         self.stats = stats
         self._sem = asyncio.Semaphore(_MAX_PARALLEL)
+        self._reads = 0
 
     async def read(self, start: int, length: int) -> bytes:
         start = max(0, start)
         end = min(self.size - 1, start + length - 1)
         if end < start:
             return b""
+        # The budget of one read: a search that does not end must fail,
+        # not turn into a stream of requests against the open-data host.
+        self._reads += 1
+        if self._reads > _MAX_READS:
+            raise OgdError(f"too many requests for {self._url.rsplit('/', 1)[-1]}")
         headers = {**_HEADERS, "Range": f"bytes={start}-{end}"}
         async with self._sem:
             try:
@@ -394,52 +419,62 @@ async def _read_point_major(rf: _RangeFile, point: tuple[int, int], lo: int = 0,
 async def _find_point_block(
     rf: _RangeFile, point: tuple[int, int], lo: int = 0, hi: int | None = None
 ) -> list[tuple[int, bytes]]:
-    """Binary search for the point's block between `lo` and `hi` (the
-    whole file by default). Points are grouped by type (the order of the
-    types is whatever the file has) and sorted by id inside a type, so
-    the search first narrows to the type's segment with a few probes,
-    then bisects by id."""
-    pid, ptype = point
+    """The rows of the point between `lo` and `hi` (the whole file by
+    default), where all rows of a point stand together and the points
+    are sorted — how, differs from file to file (see `_ORDERS`). A dozen
+    samples show which orders the file can have; the search runs with
+    the one that fits best and with the others when it finds nothing."""
     hi = rf.size if hi is None else hi
-    span_lo, span_hi = lo, hi
     probes = 12
-    table: list[tuple[int, tuple[int, int, str]]] = []
-    results = await asyncio.gather(
-        *(_row_at(rf, span_lo + i * (span_hi - span_lo) // probes) for i in range(probes))
-    )
-    for k, off in results:
-        if k and off < span_hi:
-            table.append((off, k))
-    table.sort()
-    same = [off for off, k in table if k[1] == ptype]
-    if same:
-        before = [off for off, k in table if k[1] != ptype and off < same[0]]
-        after = [off for off, k in table if k[1] != ptype and off > same[-1]]
-        lo = max(before) if before else span_lo
-        hi = min(after) if after else span_hi
+    results = await asyncio.gather(*(_row_at(rf, lo + i * (hi - lo) // probes) for i in range(probes)))
+    samples = sorted((off, k) for k, off in results if k and off < hi)
+
+    def breaks(order: Callable[[int, int], tuple[Any, ...]]) -> int:
+        keys = [order(k[0], k[1]) for _off, k in samples]
+        return sum(1 for one, two in zip(keys, keys[1:]) if two < one)
+
+    for order in sorted(_ORDERS, key=breaks):
+        rows = await _search_point_block(rf, point, lo, hi, order, samples)
+        if rows:
+            return rows
+    return []
+
+
+async def _search_point_block(
+    rf: _RangeFile,
+    point: tuple[int, int],
+    span_lo: int,
+    span_hi: int,
+    order: Callable[[int, int], tuple[Any, ...]],
+    samples: list[tuple[int, tuple[int, int, str]]],
+) -> list[tuple[int, bytes]]:
+    """Binary search for the point's rows in a span sorted by `order`:
+    the samples narrow the span, the bisection does the rest. Empty when
+    the point is not where this order puts it."""
+    target = order(*point)
+    lo, hi = span_lo, span_hi
     found: int | None = None
+    for off, k in samples:
+        if (k[0], k[1]) == point:
+            found = off
+            break
+        if order(k[0], k[1]) < target:
+            lo = max(lo, off)
+        else:
+            hi = min(hi, off)
     for _ in range(48):
-        if hi - lo <= 2 * _PROBE:
+        if found is not None or hi - lo <= 2 * _PROBE:
             break
         mid = (lo + hi) // 2
         k, off = await _row_at(rf, mid)
-        if k is None:
+        if k is None or off >= hi:
             hi = mid
-            continue
-        if k[1] != ptype:
-            # Still outside the type's segment: move towards it.
-            if same and off < same[0]:
-                lo = off
-            else:
-                hi = mid
-            continue
-        if k[0] < pid:
-            lo = off
-        elif k[0] > pid:
-            hi = mid
-        else:
+        elif (k[0], k[1]) == point:
             found = off
-            break
+        elif order(k[0], k[1]) < target:
+            lo = off
+        else:
+            hi = mid
     centre = found if found is not None else lo
     start, length = max(span_lo, centre - 8 * _PROBE), 16 * _PROBE
     rows: list[tuple[int, bytes]] = []
@@ -507,19 +542,20 @@ async def _read_date_major_small(rf: _RangeFile, point: tuple[int, int]) -> list
     first_end = await _date_boundary(rf, lo, hi, dates[1])
     rows = await _find_point_block(rf, point, 0, first_end)
     if not rows:
-        return await _read_block_search(rf, point)
+        # Not where the block's order puts it; the caller reads the file whole.
+        return []
     out = [line for _off, line in rows]
     last_hit = rows[0][0]
     step = first_end
     for _ in range(len(dates) - 1):
-        predicted = last_hit + step
-        if predicted >= rf.size:
-            break
+        # The blocks differ a little in length: for the last points of a
+        # block the prediction may lie past the end of the file.
+        predicted = min(last_hit + step, rf.size - 1)
         hit = None
         for window in (4 * 1024, 24 * 1024):
             start = max(0, predicted - window // 2)
             chunk = await rf.read(start, window)
-            found = _rows_of(chunk, start, point, start == 0)
+            found = [r for r in _rows_of(chunk, start, point, start == 0) if r[0] > last_hit]
             if found:
                 hit = found[0]
                 break
@@ -604,7 +640,11 @@ async def _read_date_major(rf: _RangeFile, point: tuple[int, int]) -> list[bytes
         hits: list[int] = []
         for t, w, chunk in zip(targets, windows, chunks):
             start = max(0, t - w // 2)
-            found = _rows_of(chunk, start, point, start == 0)
+            # Only a row beyond the last one counts. A window that still
+            # covers an earlier row must not send the search back to it:
+            # the step would become zero and the loop would never end.
+            beyond = hits[-1] if hits else last_hit
+            found = [r for r in _rows_of(chunk, start, point, start == 0) if r[0] > beyond]
             if not found:
                 break
             hits.append(found[0][0])
@@ -621,7 +661,7 @@ async def _read_date_major(rf: _RangeFile, point: tuple[int, int]) -> list[bytes
             t = targets[0]
             start = max(0, t - 32 * 1024)
             chunk = await rf.read(start, 64 * 1024)
-            found = _rows_of(chunk, start, point, start == 0)
+            found = [r for r in _rows_of(chunk, start, point, start == 0) if r[0] > last_hit]
             if found:
                 rows_out.append(found[0][1])
                 step = found[0][0] - last_hit
@@ -667,13 +707,18 @@ async def async_read_point(
         rows = await _read_whole(rf, point)
     elif param in DATE_MAJOR_PARAMS:
         # Few blocks (daily values): search each block; many (hourly): predict.
-        if size <= 3 * 1024 * 1024:
-            rows = await _read_date_major_small(rf, point)
+        if size <= _DAILY_FILE:
+            rows = await _read_date_major_small(rf, point) or await _read_whole(rf, point)
         else:
             rows = await _read_date_major(rf, point)
     else:
         rows = await _read_point_major(rf, point)
-        if not rows:
+        if not rows and size <= _DAILY_FILE:
+            # Not where the file's order puts it — a point listed out of
+            # order, or a layout that has changed: a file this small is
+            # read whole, which finds the point wherever it stands.
+            rows = await _read_whole(rf, point)
+        elif not rows:
             # The layout may have changed: try the other strategy once.
             rows = await _read_date_major(rf, point)
     if not rows:

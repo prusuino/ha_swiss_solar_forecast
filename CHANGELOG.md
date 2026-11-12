@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.2 — 2026-11-12
+
+- **Fix: sensors of a plane that is gone no longer stay behind.** After a reconfigure that removed a plane, left the plant with a single plane, or replaced a roof of the cadastre by a plane entered by hand, the sensors that no longer exist (`plane3_…`, the per-plane sensors, *Typical day (cadastre)* and *Forecast vs typical day*) stayed in the entity list as unavailable. They are now removed when the entry loads; the sensors that remain keep their entity and their history.
+- **One read of a file has a request budget.** The reader of the forecast files is the one of Swiss Meteo 1.7.0: it recognises the order in which a file lists its points, and a read ends after a fixed number of requests with the parameter reported as not read, instead of asking the open-data server again and again. The values did not change — this integration reads postal-code points only, and those were read correctly.
+- **The run check is counted as it is.** The check for a new run takes two HEAD requests instead of one in the few minutes after the full hour, while the run of that hour is not out yet. *Requests today* now counts them all, and README and SECURITY.md say so.
+- Tests for the reader of the forecast files and for the clean-up of the entity registry.
+
 ## 0.4.1 — 2026-11-12
 
 - **Fix: Reconfigure no longer drops the planes entered by hand.** The list of planes showed the roofs of the cadastre only, and of the plant's own planes only those were ticked. A plane entered by hand — a garage, a ground-mounted row — was neither listed nor ticked, so it left the plant without a word when the forms were clicked through, and with a yield meter the calibration then learned against modules that were no longer in the forecast. The list now holds every plane the plant has, the ones entered by hand with their name, peak power and orientation, all of them ticked: leave a tick to keep the plane, remove it to remove the plane. **If you have used Reconfigure on a plant with a plane entered by hand, check that the plane is still there** (the entry's ⚙️ lists the planes) and add it again if not.

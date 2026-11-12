@@ -30,7 +30,7 @@ A Home Assistant custom integration that forecasts the output of your PV plant f
 - **Several roofs, one plant**: all planes in one entry, with the plant's totals and a sensor per plane; the energy dashboard gets the sum.
 - **A yardstick**: with a cadastre roof, a sensor shows the long-term expectation of a day in this month and the forecast as a percentage of it — "today 60 % of a normal November day".
 - **Damping by hand**: without a meter, a damping factor per plane scales the result once you have compared a few weeks with your real yield.
-- **Reads sparingly**: one HEAD request every 15 minutes tells whether a new model run exists; only then are the parameter files read. Four of them cost about 160 KB together with every hourly run; the temperature file is laid out differently and costs 2.3 MB, so it is read every six hours only and its series is kept in between. That makes about 13 MB a day. While the sun is up, the nearest measurement station's file of the day (about 20 KB) is read once in 15 minutes: up to 1 MB a day in summer, a third of that in winter. Diagnostics sensors show the traffic.
+- **Reads sparingly**: one HEAD request every 15 minutes tells whether a new model run exists (two in the few minutes after the full hour, while the run of that hour is not out yet); only then are the parameter files read. Four of them cost about 160 KB together with every hourly run; the temperature file is laid out differently and costs 2.3 MB, so it is read every six hours only and its series is kept in between. That makes about 13 MB a day. While the sun is up, the nearest measurement station's file of the day (about 20 KB) is read once in 15 minutes: up to 1 MB a day in summer, a third of that in winter. Diagnostics sensors show the traffic.
 - **Set up in a minute**: from your Home Assistant location or by typing a place or postal code; German, English, French and Italian; repairs notice when the data cannot be read; diagnostics download with your location redacted.
 
 ## Background
@@ -202,7 +202,7 @@ The integration declares **Bronze** on the [Home Assistant integration quality s
 
 ## Notes
 
-- **Update cadence.** MeteoSwiss publishes a new local forecast run every hour. The integration checks every 15 minutes with one HEAD request and reads the files only when the run has changed.
+- **Update cadence.** MeteoSwiss publishes a new local forecast run every hour. The integration checks every 15 minutes with one HEAD request — a second one when the run of the current hour is not out yet, which is the case for a few minutes after the full hour — and reads the files only when the run has changed.
 - **Horizon.** Nine days hour by hour; the sensors show today, tomorrow and the day after, the attributes everything.
 - **Units.** Energy in kWh, power in W; the hourly values are the mean power of the hour, so a value of 5000 W for the hour starting 12:00 means 5 kWh between 12:00 and 13:00.
 - **Forecast point.** MeteoSwiss publishes the radiation for the centres of the postal codes. The integration takes the one nearest to your plant — not a measurement station or a mountain point that may lie closer, because those come without radiation.

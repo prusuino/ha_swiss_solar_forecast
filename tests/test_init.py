@@ -22,7 +22,7 @@ from custom_components.swiss_solar_forecast.energy import async_get_solar_foreca
 from custom_components.swiss_solar_forecast.horizon import HorizonError
 from custom_components.swiss_solar_forecast.ogd import OgdUnavailable
 
-from .conftest import POINTS, WINTER_RUN, horizon_reply, snow_run
+from .conftest import POINTS, RUN, WINTER_RUN, horizon_reply, snow_run
 
 SHARES = {str(m): s for m, s in zip(range(1, 13), (3, 5, 8, 10, 12, 13, 13, 12, 9, 7, 4, 4))}
 PLANES = [
@@ -105,6 +105,64 @@ async def test_single_plane_has_no_plane_sensors(hass: HomeAssistant, enable_cus
     assert hass.states.get("sensor.swiss_solar_forecast_1234_energy_today") is not None
     assert hass.states.get("sensor.swiss_solar_forecast_1234_plane1_energy_today") is None
     assert hass.states.get("sensor.swiss_solar_forecast_1234_typical_day_energy") is None
+
+
+def _registered(hass: HomeAssistant, entry: MockConfigEntry) -> set[str]:
+    registry = er.async_get(hass)
+    return {known.entity_id.removeprefix(PREFIX) for known in er.async_entries_for_config_entry(registry, entry.entry_id)}
+
+
+async def _change_planes(hass: HomeAssistant, entry: MockConfigEntry, planes: list[dict]) -> None:
+    hass.config_entries.async_update_entry(entry, data={**entry.data, "planes": planes})
+    await hass.async_block_till_done(wait_background_tasks=True)
+    assert entry.state is ConfigEntryState.LOADED
+
+
+@freeze_time(datetime(2026, 6, 21, 10, 15, tzinfo=UTC))
+async def test_sensors_of_a_removed_plane_leave_the_registry(hass: HomeAssistant, enable_custom_integrations, fake_forecast) -> None:
+    """Three planes become two: the third plane's sensors go, the enabled
+    and the disabled ones, the others stay with their history."""
+    west = {**PLANES[1], "label": "West", "azimuth": 270.0}
+    entry = _entry([*PLANES, west])
+    await _setup(hass, entry)
+    before = _registered(hass, entry)
+    assert {"plane3_energy_today", "plane3_power_now", "plane3_energy_tomorrow", "plane3_peak_power_today"} <= before
+
+    await _change_planes(hass, entry, PLANES)
+    after = _registered(hass, entry)
+    assert after == {name for name in before if not name.startswith("plane3_")}
+    assert hass.states.get(PREFIX + "plane3_energy_today") is None
+    assert hass.states.get(PREFIX + "plane2_energy_today") is not None
+
+
+@freeze_time(datetime(2026, 6, 21, 10, 15, tzinfo=UTC))
+async def test_a_plant_left_with_one_plane_loses_the_plane_sensors(hass: HomeAssistant, enable_custom_integrations, fake_forecast) -> None:
+    """Two planes become one, and that one has no roof of the cadastre:
+    the per-plane sensors go and so does the cadastre's yardstick."""
+    entry = _entry()
+    await _setup(hass, entry)
+    before = _registered(hass, entry)
+    assert {"plane1_energy_today", "plane2_energy_today", "plane1_typical_day_energy", "typical_day_energy", "forecast_vs_typical"} <= before
+
+    await _change_planes(hass, entry, [PLANES[1]])
+    after = _registered(hass, entry)
+    assert after == {name for name in before if not name.startswith("plane")} - {"typical_day_energy", "forecast_vs_typical"}
+    assert hass.states.get(PREFIX + "energy_today") is not None
+
+
+@freeze_time(datetime(2026, 6, 21, 10, 15, tzinfo=UTC))
+async def test_a_roof_entered_by_hand_loses_the_yardstick_of_its_plane(hass: HomeAssistant, enable_custom_integrations, fake_forecast) -> None:
+    """The first plane is no longer a roof of the cadastre: its typical
+    day goes, for the plane and for the plant, everything else stays."""
+    entry = _entry()
+    await _setup(hass, entry)
+    before = _registered(hass, entry)
+
+    by_hand = {key: value for key, value in PLANES[0].items() if not key.startswith("roof_")}
+    await _change_planes(hass, entry, [by_hand, PLANES[1]])
+    gone = {"plane1_typical_day_energy", "plane1_forecast_vs_typical", "typical_day_energy", "forecast_vs_typical"}
+    assert gone <= before
+    assert _registered(hass, entry) == before - gone
 
 
 @freeze_time(datetime(2026, 6, 21, 10, 15, tzinfo=UTC))
@@ -562,6 +620,41 @@ async def test_accuracy_against_the_yield_meter(hass: HomeAssistant, enable_cust
 
 
 FIND = "custom_components.swiss_solar_forecast.coordinator.async_find_latest_run"
+
+
+CATALOGUE = "custom_components.swiss_solar_forecast.coordinator.async_catalogue_latest_run"
+
+
+@freeze_time(NOW)
+async def test_the_run_check_is_counted_with_the_requests_it_took(hass: HomeAssistant, enable_custom_integrations, fake_forecast) -> None:
+    """One HEAD request as a rule, two while the run of the hour is not
+    out yet, and the catalogue on top when no run was found."""
+    entry = _entry()
+    await _setup(hass, entry)
+    coordinator = entry.runtime_data
+
+    def probing(requests: int, found: datetime | None):
+        async def find(session, now, stats=None):
+            stats.requests += requests
+            return found
+
+        return find
+
+    async def cost_of_a_check() -> int:
+        before = coordinator.data.requests_today
+        await coordinator.async_refresh()
+        await hass.async_block_till_done()
+        assert coordinator.last_update_success
+        return coordinator.data.requests_today - before
+
+    with patch(FIND, side_effect=probing(0, RUN)):
+        besides = await cost_of_a_check()  # whatever else a wake reads
+    with patch(FIND, side_effect=probing(1, RUN)):
+        assert await cost_of_a_check() == besides + 1
+    with patch(FIND, side_effect=probing(2, RUN)):
+        assert await cost_of_a_check() == besides + 2
+    with patch(FIND, side_effect=probing(7, None)), patch(CATALOGUE, return_value=RUN):
+        assert await cost_of_a_check() == besides + 8
 
 
 async def test_the_temperature_is_not_read_with_every_run(hass: HomeAssistant, enable_custom_integrations, freezer) -> None:
