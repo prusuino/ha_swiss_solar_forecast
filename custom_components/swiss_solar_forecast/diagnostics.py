@@ -102,6 +102,7 @@ def _station(coordinator: SolarForecastCoordinator | None) -> dict[str, Any] | N
         return None
     station = coordinator.station
     found = coordinator.correction
+    sky = coordinator.sky
     height = station.get("height")
     return {
         "enabled": coordinator.use_station,
@@ -116,6 +117,18 @@ def _station(coordinator: SolarForecastCoordinator | None) -> dict[str, Any] | N
             "forecast_w_m2": found.expected,
             "measured_at": found.measured_at.isoformat(),
             "trust": found.trust,
+        },
+        # what the weather model was found to get wrong by the kind of sky: [measured, forecast, hours] per sky
+        "sky": None
+        if sky is None
+        else {
+            "factors": sky.factors(),
+            "hours": sky.hours(),
+            "sums": {kind: [round(value, 1) for value in values] for kind, values in sorted(sky.sums.items())},
+            "samples": sky.samples,
+            "last_sample": sky.last_sample or None,
+            "logged_hours": len(sky.log),
+            "trust": round(coordinator.station_trust, 2),
         },
     }
 
@@ -169,6 +182,7 @@ async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry: ConfigE
                     "snow_cover": round(h.snow_cover, 2),
                     "snow_loss_kw": round(h.snow_loss_kw, 3),
                     "low_stratus": h.start in snap.stratus,
+                    "sky": snap.sky.get(h.start),
                 }
                 for h in (snap.plant.hours if snap else [])
             ],

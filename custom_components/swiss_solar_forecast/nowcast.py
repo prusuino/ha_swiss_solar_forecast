@@ -58,10 +58,14 @@ class Correction:
     def fresh(self, now: datetime) -> bool:
         return now - self.measured_at <= FRESH
 
+    def reach(self, start: datetime) -> float:
+        """How far the hour that starts at `start` lies within the correction's reach: 1 at the measurement, fading to 0."""
+        lead = (start + _HALF - self.measured_at).total_seconds() / 3600.0
+        return max(0.0, 1.0 - max(0.0, lead) / REACH_HOURS)
+
     def weight(self, start: datetime) -> float:
         """How much of the ratio applies to the hour that starts at `start`."""
-        lead = (start + _HALF - self.measured_at).total_seconds() / 3600.0
-        return self.trust * max(0.0, 1.0 - max(0.0, lead) / REACH_HOURS)
+        return self.trust * self.reach(start)
 
     def factor(self, start: datetime) -> float:
         """The factor on the forecast radiation of the hour that starts at `start`."""

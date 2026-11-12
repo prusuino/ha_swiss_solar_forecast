@@ -7,8 +7,10 @@ Four things refine that output, all optional: the terrain horizon of the
 place (read once from the swisstopo elevation model, it blocks the direct
 beam while the sun stands behind a mountain), the snow on the modules
 (followed hour by hour from precipitation, temperature and irradiance),
-the radiation a measurement station nearby recorded in the last hour (it
-corrects the hours just ahead) and the self-calibration against the
+the radiation a measurement station nearby recorded (the last hour
+corrects the hours just ahead, and over the days it shows what the
+weather model gets wrong under a clear, a mixed and a grey sky, which
+corrects the hours further ahead) and the self-calibration against the
 plant's own energy meter (a factor per place of the sun in the sky,
 learned from what was forecast and what was counted). With the meter the
 coordinator also keeps the record of how well the forecast did.
@@ -46,8 +48,9 @@ from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
-from . import fog, nowcast
+from . import bias, fog, nowcast
 from .accuracy import Accuracy
+from .bias import SkyBias
 from .calibration import Calibration, energy_wh
 from .const import (
     ALBEDO_SNOW,
@@ -286,6 +289,7 @@ class ForecastSnapshot:
     ground_snow: dict[datetime, float] = field(default_factory=dict)  # hour start -> mm of water on the ground
     stratus_known: bool = False  # whether the cloud layers are there to tell low stratus from
     stratus: frozenset[datetime] = frozenset()  # the starts of the daylight hours the forecast sees under low stratus
+    sky: dict[datetime, str] = field(default_factory=dict)  # hour start -> the kind of sky the forecast expects (with a station only)
     # traffic since local midnight
     traffic_day: datetime | None = None
     requests_today: int = 0
@@ -388,6 +392,7 @@ class SolarForecastCoordinator(DataUpdateCoordinator[ForecastSnapshot]):
         self._station_task = None
         self._station_retry_at: datetime | None = None
         self._correction: nowcast.Correction | None = None
+        self.sky: SkyBias | None = None  # what the weather model gets wrong by the kind of sky, learned from the station
         self._horizon: Horizon | None = None
         self._horizon_task = None
         self._horizon_retry_at: datetime | None = None
@@ -419,6 +424,7 @@ class SolarForecastCoordinator(DataUpdateCoordinator[ForecastSnapshot]):
         self.frozen = Frozen.from_dict(kept.get("frozen"), self._fingerprint())
         if self.use_station:
             self._station = _kept_station(kept.get("station"))
+            self.sky = SkyBias.from_dict(kept.get("sky"), self.lat, self.lon)
         if self.yield_sensor:
             self.calibration = Calibration.from_dict(kept.get("calibration"), self._fingerprint(), self.lat, self.lon)
             self.accuracy = Accuracy.from_dict(kept.get("accuracy"), self._fingerprint())
@@ -434,6 +440,7 @@ class SolarForecastCoordinator(DataUpdateCoordinator[ForecastSnapshot]):
             "snow": self.snow.as_dict() if self.snow else None,
             "frozen": self.frozen.as_dict(),
             "station": self._station or None,
+            "sky": self.sky.as_dict() if self.sky is not None else None,
         }
 
     async def async_save(self) -> None:
@@ -488,6 +495,11 @@ class SolarForecastCoordinator(DataUpdateCoordinator[ForecastSnapshot]):
         return self._station if self._station.get("abbr") else {}
 
     @property
+    def station_trust(self) -> float:
+        """What the chosen station counts at its distance (0 without one)."""
+        return nowcast.trust(float(self._station.get("distance_km") or 0.0)) if self._station.get("abbr") else 0.0
+
+    @property
     def correction(self) -> nowcast.Correction | None:
         """The correction in force: the station's last hour against the forecast of the same time."""
         found = self._correction
@@ -532,7 +544,11 @@ class SolarForecastCoordinator(DataUpdateCoordinator[ForecastSnapshot]):
             return
         forecast = dict(self._series.get(PARAM_GLOBAL, []))
         found = nowcast.correction(values, forecast, dt_util.utcnow(), self.lat, self.lon, float(self._station["distance_km"]))
-        if found != self._correction:
+        # the hours the station has finished today teach what the weather model gets wrong under their kind of sky
+        learned = self.sky.learn(values) if self.sky is not None else 0
+        if learned:
+            self._store.async_delay_save(self._kept, _SAVE_DELAY)
+        if found != self._correction or learned:
             self._correction = found
             self._recompute()
 
@@ -677,6 +693,16 @@ class SolarForecastCoordinator(DataUpdateCoordinator[ForecastSnapshot]):
         wind = dict(self._series.get(PARAM_WIND, []))  # km/h
         precipitation = dict(self._series.get(PARAM_PRECIPITATION, []))
         rows = [(ts, value, dhi.get(ts), temp.get(ts), None if wind.get(ts) is None else wind[ts] / 3.6) for ts, value in sorted(ghi.items())]
+        sky = self.sky
+        snap.sky = {}
+        if sky is not None:
+            # the forecast as it came is what the station's hours will be measured against
+            if sky.record_forecast([(ts - _HOUR, value) for ts, value in ghi.items()], now):
+                self._store.async_delay_save(self._kept, _SAVE_DELAY)
+            snap.sky = {ts - _HOUR: kind for ts, value in ghi.items() if (kind := sky.sky_at(ts - _HOUR, value)) is not None}
+            # what the weather model was found to get wrong under each kind of sky corrects the hours
+            # beyond the reach of the last hour's measurement
+            rows = bias.corrected(rows, sky, self._correction, now, self.station_trust)
         # what a station nearby measured in the last hour corrects the hours just ahead
         rows = nowcast.corrected(rows, self._correction, now)
         horizon = self.horizon.elevation_at if self.horizon is not None else None

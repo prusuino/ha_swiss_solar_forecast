@@ -248,6 +248,8 @@ class PlantSensor(_Base):
                 # today's hours that are over and count with what the yield meter counted in them
                 "measured_hours": sum(1 for start in snap.plant.measured if dt_util.as_local(start).date() == day0),
                 "station_correction": self.coordinator.correction is not None,
+                # whether a factor learned for a kind of sky is at work on the hours further ahead
+                "sky_correction": self.coordinator.sky is not None and self.coordinator.sky.in_force and self.coordinator.station_trust > 0,
             }
         if self._key == "terrain_horizon":
             horizon = self.coordinator.horizon
@@ -292,6 +294,7 @@ class PlantSensor(_Base):
         if self._key == "station_correction":
             station = self.coordinator.station
             found = self.coordinator.correction
+            sky = self.coordinator.sky
             now = dt_util.utcnow().replace(minute=0, second=0, microsecond=0)
             return {
                 "station": station.get("name") or None,
@@ -301,6 +304,12 @@ class PlantSensor(_Base):
                 "measured_at": None if found is None else found.measured_at.isoformat(),
                 # the share of the difference that is applied to the current hour
                 "weight": None if found is None else round(found.weight(now), 2),
+                # what was learned for the hours further ahead: the factor on the forecast radiation under a clear,
+                # a mixed and a grey sky (none while a sky has too few hours), and the hours behind each (older ones fade)
+                "sky_factors": None if sky is None else sky.factors(),
+                "sky_hours": None if sky is None else sky.hours(),
+                "sky_samples": None if sky is None else sky.samples,
+                "sky_last_sample": None if sky is None else sky.last_sample or None,
             }
         if self._key in _ACCURACY_DAYS:
             accuracy = self.coordinator.accuracy
