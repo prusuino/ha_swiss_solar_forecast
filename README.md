@@ -1,6 +1,6 @@
 # Swiss Solar Forecast for Home Assistant
 
-[![marketplace_badge](https://img.shields.io/badge/Marketplace-Custom-41BDF5.svg)](https://hacs.xyz/docs/marketplace/)
+[![marketplace_badge](https://img.shields.io/badge/Marketplace-Default-41BDF5.svg)](https://hacs.xyz/docs/marketplace/)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/prusuino/ha_swiss_solar_forecast)](https://github.com/prusuino/ha_swiss_solar_forecast/releases)
 [![Validate](https://github.com/prusuino/ha_swiss_solar_forecast/actions/workflows/validate.yml/badge.svg)](https://github.com/prusuino/ha_swiss_solar_forecast/actions/workflows/validate.yml)
@@ -102,9 +102,9 @@ The sensors are plain numbers and timestamps, so the automation editor can use t
 
 ## Installation
 
-### Home Assistant Marketplace (custom repository)
+### Home Assistant Marketplace (recommended)
 
-1. Open **Settings → Marketplace → ⋮ → Custom repositories** (Home Assistant 2026.11 or newer; on older versions **HACS → ⋮ → Custom repositories**), add `https://github.com/prusuino/ha_swiss_solar_forecast` with the category *Integration*, then download **Swiss Solar Forecast** – or use the button:
+1. Open **Settings → Marketplace** (Home Assistant 2026.11 or newer; on older versions open **HACS**), search for **"Swiss Solar Forecast"** and download it — or use the button, which opens the integration directly in your Marketplace:
 
    [![Open in Marketplace](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=prusuino&repository=ha_swiss_solar_forecast&category=integration)
 
