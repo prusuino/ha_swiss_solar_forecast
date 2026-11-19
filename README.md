@@ -254,6 +254,20 @@ The forecast is a model estimate from a weather forecast. Decisions about energy
 - [Swiss Meteo](https://github.com/prusuino/ha_swiss_meteo) — the full MeteoSwiss forecast, station values, warnings, pollen and radar.
 - [Swiss Solar Reference Price](https://github.com/prusuino/ha_swiss_solar_reference_price) — the quarterly reference market price for solar power fed into the grid.
 - [Swiss Electricity Price](https://github.com/prusuino/ha_swiss_electricity_price) — the ElCom tariffs of your grid operator.
+- [Swiss Public Alerts](https://github.com/prusuino/ha_swiss_public_alerts) — official Alertswiss warnings for your location
+- [Swiss Earthquakes](https://github.com/prusuino/ha_swiss_earthquakes) — recent earthquakes from the Swiss Seismological Service on a map
+- [Swiss Avalanche Bulletin](https://github.com/prusuino/ha_swiss_avalanche_bulletin) — SLF avalanche danger for your region
+- [Swiss Waters](https://github.com/prusuino/ha_swiss_waters) — live water temperature, water level, discharge and flood danger of Swiss rivers and lakes
+- [Swiss Hail Protection](https://github.com/prusuino/ha_swiss_hail_protection) — Swiss hail warnings for your blinds: the official VKF hail-protection signal or the MeteoSwiss hail radar around your location
+- [Marstek Venus Surplus Control](https://github.com/prusuino/ha_venus_surplus_control) — runs a Marstek Venus battery from PV surplus, also next to an inverter battery
+- [Swiss Charging Stations](https://github.com/prusuino/ha_swiss_charging_stations) — real-time availability and prices of public EV charging stations in Switzerland
+- [Austrian Charging Stations](https://github.com/prusuino/ha_austrian_charging_stations) — real-time availability of public EV charging stations in Austria
+- [Swiss Public Transport](https://github.com/prusuino/ha_swiss_transport) — departure boards and connections for Swiss public transport
+- [Swiss Parking](https://github.com/prusuino/ha_swiss_parking) — real-time parking availability in Swiss cities
+- [Swiss Shared Mobility](https://github.com/prusuino/ha_swiss_shared_mobility) — shared bikes, e-scooters and cars available near you in Switzerland
+- [Innoxel Master 3](https://github.com/prusuino/ha_innoxel_master3) — local control for INNOXEL building automation
+- [RD30 Digital Interface](https://github.com/prusuino/ha_rd30) — 30 contact inputs of an AK MODUL-BUS RD30 over a serial device server
+- [Swiss Lottery](https://github.com/prusuino/ha_swiss_lottery) — the latest Swiss Lotto, EuroMillions and EuroDreams draws from Swisslos, your tickets checked against every draw, with a dashboard card
 
 ## Support
 
