@@ -1,7 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.6.1 — 2026-11-19
 
+- The Home Assistant Marketplace lists the integration under *Energy → Solar & batteries* and *Weather & alerts → Forecasts*. The repository is marked as made for Switzerland. Nothing changes in how the integration works.
 - **Licence.** The source code is now under the GNU General Public License v3.0 (GPL-3.0). Versions up to and including 0.6.0 stay under the MIT License they were published with.
 
 ## 0.6.0 — 2026-11-12

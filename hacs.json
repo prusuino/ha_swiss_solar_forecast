@@ -1,5 +1,6 @@
 {
   "name": "Swiss Solar Forecast (MeteoSwiss Open Data)",
+  "country": "CH",
   "zip_release": true,
   "filename": "swiss_solar_forecast.zip",
   "render_readme": true,
