@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Quality scale: Silver.** The tests now cover more than 95 % of the code, and the test workflow fails below that; the sensor platform declares its parallel updates. Nothing changes in how the integration works.
+
 ## 0.7.0 — 2026-11-20
 
 - **A measurement station's own shade no longer passes for cloud.** A station's sensor can stand behind a tree or below a ridge: while the sun is hidden from it, it reports a fraction of the light under a cloudless sky. The correction of the hours just ahead then cut a sunny afternoon by up to half, the factors by the kind of sky learned a fault the weather model did not have, and with a yield meter the calibration made up for both in that part of the sky — which made grey afternoons too high. The integration now reads the station's own record of the year and learns in which part of the sky the sensor stands in the shade, from the sunny days in it; what the station measures there is left out. Fog is not taken for shade: a grey start of a day teaches nothing, and under fog the station is asked as before. No setting; it goes with the option *Correction from a measurement station*.

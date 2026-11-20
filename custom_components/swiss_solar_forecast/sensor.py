@@ -28,6 +28,9 @@ from .horizon import ATTRIBUTION_TERRAIN
 from .snow import COVER_SHOWN
 from .sonnendach import ATTRIBUTION_SONNENDACH
 
+# The sensors only read what the coordinator holds; nothing is requested per entity.
+PARALLEL_UPDATES = 0
+
 # key: (device class, unit, state class, enabled by default, entity category)
 _META: dict[str, tuple[SensorDeviceClass | None, str | None, SensorStateClass | None, bool, EntityCategory | None]] = {
     "energy_today": (SensorDeviceClass.ENERGY, UnitOfEnergy.KILO_WATT_HOUR, None, True, None),

@@ -2,7 +2,22 @@
 captured geo API answer."""
 from __future__ import annotations
 
-from custom_components.swiss_solar_forecast.sonnendach import _roof_from_attributes, _strip_html, compass_from_sonnendach, typical_day_kwh
+import aiohttp
+import pytest
+
+from custom_components.swiss_solar_forecast.sonnendach import (
+    API,
+    Address,
+    SonnendachError,
+    _roof_from_attributes,
+    _strip_html,
+    async_geocode,
+    async_roofs_at,
+    compass_from_sonnendach,
+    typical_day_kwh,
+)
+
+from .fakes import FakeResponse, FakeSession
 
 ATTRS = {
     "building_id": 1510660,
@@ -54,3 +69,78 @@ def test_typical_day_scales_with_peak_power_and_month() -> None:
 
 def test_strip_html() -> None:
     assert _strip_html("Bundesplatz 3 <b>3011 Bern</b>") == "Bundesplatz 3 3011 Bern"
+
+
+async def test_geocode_reads_addresses_and_skips_broken_ones() -> None:
+    session = FakeSession(
+        {
+            f"{API}/SearchServer": FakeResponse(
+                payload={
+                    "results": [
+                        {"attrs": {"label": "Bundesplatz 3 <b>3011 Bern</b>", "lat": 46.9466, "lon": 7.4442}},
+                        {"attrs": {"label": "without a place"}},
+                        {"attrs": {"label": "Bahnhofplatz 1 <b>3011 Bern</b>", "lat": "x", "lon": 7.44}},
+                    ]
+                }
+            )
+        }
+    )
+    assert await async_geocode(session, "Bundesplatz 3 Bern") == [Address("Bundesplatz 3 3011 Bern", 46.9466, 7.4442)]
+    assert await async_geocode(FakeSession({f"{API}/SearchServer": FakeResponse(payload={})}), "nowhere") == []
+
+
+async def test_roofs_at_collects_the_planes_of_the_building_largest_first() -> None:
+    lookups: list[int] = []
+
+    def find(method: str, url: str, headers: dict) -> FakeResponse:
+        lookups.append(len(lookups))
+        if len(lookups) > 1:  # the second building has nothing
+            return FakeResponse(payload={})
+        return FakeResponse(
+            payload={
+                "results": [
+                    {"id": 11, "attributes": {**ATTRS, "flaeche": 40.0}},
+                    {"id": 12, "attributes": ATTRS},
+                    {"id": 13, "attributes": {**ATTRS, "flaeche": 3.0}},  # a dormer
+                    {"id": 14, "attributes": {"flaeche": "x"}},  # garbage
+                    {"attributes": {**ATTRS, "label": "15", "flaeche": 60.0}},  # the id under another name
+                    {"attributes": ATTRS},  # no id at all
+                ]
+            }
+        )
+
+    session = FakeSession(
+        {
+            f"{API}/MapServer/identify": FakeResponse(
+                payload={
+                    "results": [
+                        {"attributes": {"building_id": 1510660}},
+                        {"attributes": {"building_id": 1510660}},  # a second plane of the same building
+                        {"attributes": {}},
+                        {"attributes": {"building_id": 1510661}},
+                    ]
+                }
+            ),
+            f"{API}/MapServer/find": find,
+        }
+    )
+    roofs = await async_roofs_at(session, 46.9466, 7.4442)
+    assert [(r.roof_id, r.area) for r in roofs] == [(12, 245.33), (15, 60.0), (11, 40.0)]
+    assert len(lookups) == 2  # one lookup per building
+    assert await async_roofs_at(FakeSession({f"{API}/MapServer/identify": FakeResponse(payload={})}), 46.9, 7.4) == []
+
+
+@pytest.mark.parametrize(
+    ("answer", "message"),
+    [
+        (FakeResponse(503), "HTTP 503 from the geo API"),
+        (aiohttp.ClientError("down"), "ClientError from the geo API"),
+        (TimeoutError(), "TimeoutError from the geo API"),
+        (FakeResponse(payload=ValueError("not JSON")), "ValueError from the geo API"),
+    ],
+)
+async def test_an_unreadable_geo_api_is_one_kind_of_error(answer: object, message: str) -> None:
+    with pytest.raises(SonnendachError, match=message):
+        await async_geocode(FakeSession({f"{API}/SearchServer": answer}), "Bern")
+    with pytest.raises(SonnendachError, match=message):
+        await async_roofs_at(FakeSession({f"{API}/MapServer/identify": answer}), 46.9, 7.4)
