@@ -295,6 +295,7 @@ class PlantSensor(_Base):
             station = self.coordinator.station
             found = self.coordinator.correction
             sky = self.coordinator.sky
+            view = self.coordinator.sky_view if station else None
             now = dt_util.utcnow().replace(minute=0, second=0, microsecond=0)
             return {
                 "station": station.get("name") or None,
@@ -310,6 +311,10 @@ class PlantSensor(_Base):
                 "sky_hours": None if sky is None else sky.hours(),
                 "sky_samples": None if sky is None else sky.samples,
                 "sky_last_sample": None if sky is None else sky.last_sample or None,
+                # the station's own shade, from its record: whether the sun stands in it now (the station is then
+                # not asked), and per compass bearing the height of the sun up to which the sensor is in the shade
+                "station_in_shade": self.coordinator.station_in_shade,
+                "station_shade": None if view is None or not view.known else {str(bearing): height for bearing, height in view.profile().items()},
             }
         if self._key in _ACCURACY_DAYS:
             accuracy = self.coordinator.accuracy

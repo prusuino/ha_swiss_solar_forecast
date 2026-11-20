@@ -198,6 +198,13 @@ class SkyBias:
         """The hours behind every kind of sky (earlier ones fade)."""
         return {sky: round(self.sums.get(sky, [0.0, 0.0, 0.0])[2], 1) for sky in SKIES}
 
+    def forget(self, skies: Iterable[str]) -> bool:
+        """Drop what was learned for some kinds of sky; returns whether there was anything."""
+        dropped = [sky for sky in skies if sky in self.sums]
+        for sky in dropped:
+            del self.sums[sky]
+        return bool(dropped)
+
     # ---------------------------------------------------------- persistence
 
     def as_dict(self) -> dict:

@@ -240,6 +240,15 @@ class Calibration:
         """The factors of the parts of the sky with evidence, from north over east."""
         return {key: round(self.factor(key), 3) for key in sorted(self.bins, key=_order)}
 
+    def forget(self, keys: Collection[str]) -> int:
+        """Drop what was learned for some parts of the sky: they take the
+        plant's overall factor until hours come in again. Returns how many
+        were dropped."""
+        dropped = [key for key in keys if key in self.bins]
+        for key in dropped:
+            del self.bins[key]
+        return len(dropped)
+
     # ---------------------------------------------------------- persistence
 
     def as_dict(self) -> dict:

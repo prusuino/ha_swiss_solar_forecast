@@ -17,6 +17,10 @@ A second, small kind of file serves the short-term correction: what one
 measurement station of the SwissMetNet network recorded today, in steps
 of ten minutes (some 20 KB at the end of the day, read whole).
 
+The same station's record of the running year tells in which part of the
+sky its sensor stands in the shade. It is read whole once (some 6 MB at
+the end of a year); after that only the tail with the days added since.
+
 The run of a forecast file is part of its name, so the newest run is found
 by probing the current hour and the hours before it with HEAD requests —
 no catalogue query is needed. Pure standard library plus aiohttp (which
@@ -55,6 +59,10 @@ _LOGGER = logging.getLogger(__name__)
 _HEADERS = {"User-Agent": USER_AGENT, "Accept-Encoding": "identity"}
 _TIMEOUT = aiohttp.ClientTimeout(total=60, sock_connect=15)
 _TIMEOUT_STATION = aiohttp.ClientTimeout(total=20, sock_connect=10)  # a small file that is asked for again soon
+_TIMEOUT_RECORD = aiohttp.ClientTimeout(total=180, sock_connect=15)  # a station's record of a year, read whole once
+_RECORD_HEAD = 2048  # bytes that hold the header line of a station's record
+_RECORD_DAY = 144 * 220  # bytes allowed for a day of a station's record when a tail is sized (a row has some 120)
+_HISTORY_TAIL = 2_400_000  # bytes read from the end of the earlier years' file: the last four months or so
 _PROBE = 1024  # bytes read per binary-search probe
 _WINDOW = 3 * 1024  # bytes read around a predicted row in a date-major file
 _SMALL_FILE = 300 * 1024  # below this a single read beats any search
@@ -235,6 +243,109 @@ async def async_fetch_station_radiation(session: aiohttp.ClientSession, abbr: st
     """What a station measured today, and the bytes read."""
     body = await _fetch(session, station_now_url(abbr), _TIMEOUT_STATION)
     return parse_station_radiation(body), len(body)
+
+
+# --- A station's record ------------------------------------------------------
+
+# A piece of a station's record: the bytes, and where the two columns in use
+# stand when the piece does not begin with the file's header line (a tail).
+RecordPart = tuple[bytes, tuple[int, int] | None]
+
+
+def station_record_url(abbr: str) -> str:
+    """A station's ten-minute values from 1 January of the running year to yesterday."""
+    abbr = abbr.lower()
+    return f"{DATA_BASE}/{COLLECTION_STATIONS}/{abbr}/ogd-smn_{abbr}_t_recent.csv"
+
+
+def station_history_url(abbr: str, year: int) -> str:
+    """A station's ten-minute values of the decade that holds the year before `year`."""
+    abbr = abbr.lower()
+    decade = (year - 1) // 10 * 10
+    return f"{DATA_BASE}/{COLLECTION_STATIONS}/{abbr}/ogd-smn_{abbr}_t_historical_{decade}-{decade + 9}.csv"
+
+
+def _record_columns(header: bytes) -> tuple[int, int] | None:
+    """Where the time and the global radiation stand in a record's rows; None without a radiation column."""
+    names = [name.strip() for name in header.decode("latin-1").split(";")]
+    try:
+        return names.index("reference_timestamp"), names.index(PARAM_STATION_GLOBAL)
+    except ValueError:
+        return None
+
+
+def parse_station_record(part: RecordPart) -> list[tuple[datetime, float]]:
+    """The global radiation in a piece of a station's record: (end of the
+    ten minutes in UTC, W/m²) in the file's order. The record of a year
+    has some 50 000 rows of 30 columns, so the rows are split by hand and
+    only the two columns in use are looked at."""
+    body, columns = part
+    lines = body.split(b"\n")
+    if columns is None:
+        columns = _record_columns(lines[0]) if lines else None
+        if columns is None:
+            return []
+    # the first line is the header, or the cut-off start of a tail
+    at_time, at_value = columns
+    last = max(columns)
+    values: list[tuple[datetime, float]] = []
+    for line in lines[1:]:
+        fields = line.split(b";")
+        if len(fields) <= last:
+            continue
+        raw = fields[at_value].strip()
+        if not raw:
+            continue
+        stamp = fields[at_time].strip()
+        try:
+            end = datetime(int(stamp[6:10]), int(stamp[3:5]), int(stamp[0:2]), int(stamp[11:13]), int(stamp[14:16]), tzinfo=UTC)
+            values.append((end, float(raw)))
+        except ValueError:
+            continue
+    return values
+
+
+async def _fetch_record_tail(session: aiohttp.ClientSession, url: str, nbytes: int, stats: ReadStats) -> RecordPart | None:
+    """The last `nbytes` of a record with the place of its columns, or the
+    whole of it when it is not longer than that. None when the file does
+    not exist."""
+    stats.requests += 1
+    size = await _head_size(session, url)
+    if size is None:
+        return None
+    rf = _RangeFile(session, url, size, stats)
+    if size <= nbytes + _RECORD_HEAD:
+        return await rf.read(0, size), None
+    columns = _record_columns((await rf.read(0, _RECORD_HEAD)).split(b"\n", 1)[0])
+    if columns is None:
+        raise OgdError(f"no radiation column in {url.rsplit('/', 1)[-1]}")
+    return await rf.read(size - nbytes, nbytes), columns
+
+
+async def async_fetch_station_record(session: aiohttp.ClientSession, abbr: str, days: int | None = None) -> tuple[list[RecordPart], int, int]:
+    """A station's record of the running year: the whole of it (some 6 MB
+    at the end of a year, one request), or with `days` only the rows of
+    its last days, read as the file's tail. Returns the pieces, the
+    requests and the bytes read."""
+    url = station_record_url(abbr)
+    if days is None:
+        body = await _fetch(session, url, _TIMEOUT_RECORD)
+        return [(body, None)], 1, len(body)
+    stats = ReadStats()
+    part = await _fetch_record_tail(session, url, days * _RECORD_DAY, stats)
+    if part is None:
+        raise OgdUnavailable(f"no record for station {abbr}")
+    return [part], stats.requests, stats.bytes
+
+
+async def async_fetch_station_history(session: aiohttp.ClientSession, abbr: str, year: int) -> tuple[list[RecordPart], int, int]:
+    """The last months of what a station recorded before the running year:
+    the tail of the file of the earlier years, which ends with a 31
+    December. Returns the pieces (none when there is no such file), the
+    requests and the bytes read."""
+    stats = ReadStats()
+    part = await _fetch_record_tail(session, station_history_url(abbr, year), _HISTORY_TAIL, stats)
+    return ([] if part is None else [part]), stats.requests, stats.bytes
 
 
 # --- Forecast runs -----------------------------------------------------------

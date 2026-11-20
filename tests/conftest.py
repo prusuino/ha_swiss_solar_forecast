@@ -4,13 +4,16 @@ MeteoSwiss or the swisstopo servers, and a store kept in memory, so none
 writes to disk."""
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from collections.abc import Callable
+from datetime import UTC, date, datetime, timedelta
 from unittest.mock import patch
 
 import pytest
 
+from custom_components.swiss_solar_forecast.bias import clear_sky
 from custom_components.swiss_solar_forecast.horizon import Horizon, directions
 from custom_components.swiss_solar_forecast.ogd import ForecastData, Point
+from custom_components.swiss_solar_forecast.solar import SunPosition, sun_position
 
 ZURICH = Point(point_type=2, point_id=800100, name="Zürich", postal_code="8001", station_abbr="SMA", height=408.0, lat=47.3769, lon=8.5417)
 BERN = Point(point_type=2, point_id=301100, name="Bern", postal_code="3011", station_abbr="BER", height=542.0, lat=46.9480, lon=7.4474)
@@ -151,3 +154,34 @@ def fake_stations():
         patch("custom_components.swiss_solar_forecast.coordinator.async_fetch_station_radiation", return_value=([], 2000)) as radiation,
     ):
         yield stations, radiation
+
+
+@pytest.fixture(autouse=True)
+def fake_record():
+    """A station has no record unless a test sets other return values (so
+    it is taken at its word); yields the mocks of the record of the
+    running year and of the earlier years."""
+    with (
+        patch("custom_components.swiss_solar_forecast.coordinator.async_fetch_station_record", return_value=([], 1, 0)) as record,
+        patch("custom_components.swiss_solar_forecast.coordinator.async_fetch_station_history", return_value=([], 1, 0)) as history,
+    ):
+        yield record, history
+
+
+def station_day(day: date, lat: float, lon: float, share: Callable[[datetime, SunPosition], float] = lambda when, sun: 1.0) -> list[tuple[datetime, float]]:
+    """What a station's sensor records on a day, in ten-minute values (end
+    of the ten minutes, W/m²): the radiation of a cloudless sky times
+    `share(middle of the ten minutes, the sun's place then)`."""
+    values = []
+    end = datetime(day.year, day.month, day.day, 0, 10, tzinfo=UTC)
+    for _step in range(144):
+        middle = end - timedelta(minutes=5)
+        values.append((end, round(clear_sky(middle, lat, lon) * share(middle, sun_position(middle, lat, lon)), 1)))
+        end += timedelta(minutes=10)
+    return values
+
+
+def record_file(values: list[tuple[datetime, float]], abbr: str = "ZZZ") -> bytes:
+    """Ten-minute values as the file MeteoSwiss publishes for a station (a few of its columns)."""
+    rows = [f"{abbr};{end:%d.%m.%Y %H:%M};12.3;4.5;{value:g};10" for end, value in values]
+    return ("station_abbr;reference_timestamp;tre200s0;tde200s0;gre000z0;sre000z0\n" + "\n".join(rows) + "\n").encode("latin-1")

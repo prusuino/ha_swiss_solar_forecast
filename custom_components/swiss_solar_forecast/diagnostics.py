@@ -103,6 +103,8 @@ def _station(coordinator: SolarForecastCoordinator | None) -> dict[str, Any] | N
     station = coordinator.station
     found = coordinator.correction
     sky = coordinator.sky
+    view = coordinator.sky_view if station else None
+    shade = view.profile() if view is not None else {}
     height = station.get("height")
     return {
         "enabled": coordinator.use_station,
@@ -129,6 +131,19 @@ def _station(coordinator: SolarForecastCoordinator | None) -> dict[str, Any] | N
             "last_sample": sky.last_sample or None,
             "logged_hours": len(sky.log),
             "trust": round(coordinator.station_trust, 2),
+        },
+        # the station's own shade as its record shows it, in brief (where it lies in the sky would tell the station)
+        "sky_view": None
+        if view is None
+        else {
+            "known": view.known,
+            "covered": view.covered or None,
+            "days": view.days,
+            "sunny_days": view.sunny,
+            "settled": view.settled,
+            "shaded_bearings": len(shade),
+            "highest_shade": max(shade.values(), default=0.0),
+            "in_shade_now": coordinator.station_in_shade,
         },
     }
 

@@ -18,7 +18,7 @@ body:
     attributes:
       label: Version of Swiss Solar Forecast (MeteoSwiss Open Data)
       description: Settings → Devices & services → Swiss Solar Forecast (MeteoSwiss Open Data), or the Marketplace / HACS entry.
-      placeholder: "0.6.1"
+      placeholder: "0.7.0"
     validations:
       required: true
   - type: input

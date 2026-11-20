@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.0 — 2026-11-20
+
+- **A measurement station's own shade no longer passes for cloud.** A station's sensor can stand behind a tree or below a ridge: while the sun is hidden from it, it reports a fraction of the light under a cloudless sky. The correction of the hours just ahead then cut a sunny afternoon by up to half, the factors by the kind of sky learned a fault the weather model did not have, and with a yield meter the calibration made up for both in that part of the sky — which made grey afternoons too high. The integration now reads the station's own record of the year and learns in which part of the sky the sensor stands in the shade, from the sunny days in it; what the station measures there is left out. Fog is not taken for shade: a grey start of a day teaches nothing, and under fog the station is asked as before. No setting; it goes with the option *Correction from a measurement station*.
+- **Set right once.** When the shade of a station is first known, the factors of the clear and the mixed sky and, with a meter, the calibration of the parts of the sky concerned are dropped and learned afresh. Everything else that was learned stays.
+- New attributes on *Station correction*: `station_in_shade` and `station_shade`. The diagnostics tell how much of the sky the shade takes, not where it lies.
+- **Traffic.** Once per station its record of the year (one request, up to 6 MB; in January and February also the last 2.4 MB of the earlier years), then once a day the rows added since (three requests, about 65 KB). README and SECURITY.md say so.
+- Tests for the recognition of shade, the reading of the record and the coordinator.
+
 ## 0.6.1 — 2026-11-19
 
 - The Home Assistant Marketplace lists the integration under *Energy → Solar & batteries* and *Weather & alerts → Forecasts*. The repository is marked as made for Switzerland. Nothing changes in how the integration works.

@@ -32,7 +32,13 @@ range requests. While the sun
 is up the same wake reads the station's small file of the day. The temperature
 file is laid out so that a read costs many times what the others cost; its
 series is kept and read again every few hours only. What a read cost is
-kept for the diagnostics, so the traffic stays visible."""
+kept for the diagnostics, so the traffic stays visible.
+
+A station's sensor has its own shade: a tree or a ridge the sun passes
+behind. The station's record of the year shows where in the sky that is;
+it is read once (some megabytes), then once a day its tail with the days
+added since. What the station measures while the sun stands there is left
+out of the correction and of what the weather model is judged by."""
 from __future__ import annotations
 
 import logging
@@ -51,7 +57,7 @@ from homeassistant.util import dt as dt_util
 from . import bias, fog, nowcast
 from .accuracy import Accuracy
 from .bias import SkyBias
-from .calibration import Calibration, energy_wh
+from .calibration import Calibration, energy_wh, sun_bin
 from .const import (
     ALBEDO_SNOW,
     CONF_AZIMUTH,
@@ -97,13 +103,18 @@ from .ogd import (
     OgdError,
     OgdUnavailable,
     ReadStats,
+    RecordPart,
     async_catalogue_latest_run,
     async_fetch_forecast,
+    async_fetch_station_history,
     async_fetch_station_radiation,
+    async_fetch_station_record,
     async_fetch_stations,
     async_find_latest_run,
     distance_km,
+    parse_station_record,
 )
+from .skyview import SkyView
 from .snow import COVER_SHOWN, GROUND_SNOW_MM, SnowState
 from .solar import HourForecast, Plane, forecast_hours, plane_power_kw, sun_position
 from .sonnendach import typical_day_kwh
@@ -124,6 +135,15 @@ _STATION_RECHECK = timedelta(days=1)  # when a nearer station did not answer whi
 # After a failure the station is left alone for a while: its file briefly, the choice longer.
 _STATION_RETRY = timedelta(minutes=30)
 _STATION_CHOICE_RETRY = timedelta(hours=6)
+# The station's record is read whole once, then once a day its tail. When that brings
+# nothing new (the day's rows are not out yet) or fails, the next try waits.
+_RECORD_RETRY = timedelta(hours=3)
+_RECORD_WHOLE_DAYS = 150  # days behind from which the whole record is read again, not its tail
+_RECORD_SHORT_DAYS = 60  # this early in a year the record is short: the end of the year before tells the low sun's part
+# Once the station's shade is known, what was learned while it passed for clouds is dropped, back to this many days.
+_SETTLE_DAYS = 30
+# The correction in force at the end of an hour came from what the station measured up to this long before.
+_SETTLE_REACH = timedelta(minutes=90)
 # Hours this far ahead are noted, so that an hour is known as it was forecast when it ended.
 _FROZEN_AHEAD = timedelta(hours=24)
 _SAVE_DELAY = 10  # seconds: several changes in a row are written once
@@ -158,6 +178,43 @@ def _kept_station(data: object) -> dict:
         }
     except (KeyError, IndexError, TypeError, ValueError):
         return {}
+
+
+def _with_record(kept: dict, station: str, lat: float, lon: float, parts: list[RecordPart], before: date) -> tuple[SkyView, int, bool]:
+    """A station's view with the days of some pieces of its record taken
+    in: the view, the days taken, and whether the pieces reached back to
+    the last day the view had. Runs in the executor: the record of a year
+    has some 50 000 rows."""
+    view = SkyView.from_dict(kept, station, lat, lon)
+    taken = 0
+    reached = True
+    for index, part in enumerate(parts):
+        values = parse_station_record(part)
+        if index == 0 and values and view.covered:
+            first = (min(end for end, _value in values) - timedelta(minutes=10)).date()
+            reached = first <= date.fromisoformat(view.covered) + timedelta(days=1)
+        taken += view.take(values, before)
+    return view, taken, reached
+
+
+def _bins_under_shade(kept: dict, station: str, lat: float, lon: float, now: datetime) -> set[str]:
+    """The parts of the sky (as the calibration keeps them) of the hours of
+    the last weeks whose correction could come from values the station
+    measured in the shade. Runs in the executor: thousands of places of
+    the sun are looked at."""
+    view = SkyView.from_dict(kept, station, lat, lon)
+    step = timedelta(minutes=10)
+    steps = int(_SETTLE_REACH / step)
+    bins: set[str] = set()
+    first = now.replace(minute=0, second=0, microsecond=0) - timedelta(days=_SETTLE_DAYS)
+    for index in range(_SETTLE_DAYS * 24):
+        start = first + _HOUR * index
+        if sun_position(start + _HOUR / 2, lat, lon).elevation <= 0:
+            continue
+        ends = [start + _HOUR - step * n for n in range(steps)]
+        if any(sun_position(end, lat, lon).elevation >= nowcast.MIN_ELEVATION and not view.usable([(end, 0.0)]) for end in ends):
+            bins.add(sun_bin(start, lat, lon))
+    return bins
 
 
 @dataclass
@@ -393,6 +450,8 @@ class SolarForecastCoordinator(DataUpdateCoordinator[ForecastSnapshot]):
         self._station_retry_at: datetime | None = None
         self._correction: nowcast.Correction | None = None
         self.sky: SkyBias | None = None  # what the weather model gets wrong by the kind of sky, learned from the station
+        self.sky_view: SkyView | None = None  # the part of the sky the station's sensor sees the sun in, from its record
+        self._record_retry_at: datetime | None = None
         self._horizon: Horizon | None = None
         self._horizon_task = None
         self._horizon_retry_at: datetime | None = None
@@ -425,6 +484,8 @@ class SolarForecastCoordinator(DataUpdateCoordinator[ForecastSnapshot]):
         if self.use_station:
             self._station = _kept_station(kept.get("station"))
             self.sky = SkyBias.from_dict(kept.get("sky"), self.lat, self.lon)
+            if self._station.get("abbr"):
+                self.sky_view = SkyView.from_dict(kept.get("sky_view"), self._station["abbr"], self.lat, self.lon)
         if self.yield_sensor:
             self.calibration = Calibration.from_dict(kept.get("calibration"), self._fingerprint(), self.lat, self.lon)
             self.accuracy = Accuracy.from_dict(kept.get("accuracy"), self._fingerprint())
@@ -441,6 +502,7 @@ class SolarForecastCoordinator(DataUpdateCoordinator[ForecastSnapshot]):
             "frozen": self.frozen.as_dict(),
             "station": self._station or None,
             "sky": self.sky.as_dict() if self.sky is not None else None,
+            "sky_view": self.sky_view.as_dict() if self.sky_view is not None else None,
         }
 
     async def async_save(self) -> None:
@@ -531,6 +593,7 @@ class SolarForecastCoordinator(DataUpdateCoordinator[ForecastSnapshot]):
         cost = [0, 0]  # requests, bytes
         try:
             values = await (self._async_choose_station(cost, now) if choosing else self._async_station_values(cost))
+            view = await self._async_sky_view(cost, now)
         except OgdError as err:
             wait = _STATION_CHOICE_RETRY if choosing else _STATION_RETRY
             self._station_retry_at = now + wait
@@ -542,6 +605,9 @@ class SolarForecastCoordinator(DataUpdateCoordinator[ForecastSnapshot]):
         self._station_retry_at = None
         if values is None:
             return
+        if view is not None:
+            # what the station measured while its sensor stood in the shade says nothing about the sky
+            values = view.usable(values)
         forecast = dict(self._series.get(PARAM_GLOBAL, []))
         found = nowcast.correction(values, forecast, dt_util.utcnow(), self.lat, self.lon, float(self._station["distance_km"]))
         # the hours the station has finished today teach what the weather model gets wrong under their kind of sky
@@ -590,6 +656,91 @@ class SolarForecastCoordinator(DataUpdateCoordinator[ForecastSnapshot]):
         self._station = {**chosen, "checked": checked.isoformat(), "at": [round(self.lat, 3), round(self.lon, 3)]}
         self._store.async_delay_save(self._kept, _SAVE_DELAY)
         return values
+
+    # ------------------------------------------------------------- sky view
+
+    @property
+    def station_in_shade(self) -> bool | None:
+        """Whether the chosen station's sensor stands in the shade now, as
+        far as its record tells; None without a station or a record."""
+        view = self.sky_view
+        if view is None or not view.known or not self._station.get("abbr"):
+            return None
+        return not view.usable([(dt_util.utcnow(), 0.0)])
+
+    async def _async_sky_view(self, cost: list[int], now: datetime) -> SkyView | None:
+        """The part of the sky the chosen station sees the sun in, brought
+        up to yesterday from the station's record. None without a station,
+        and while no record could be read: the station is then taken at
+        its word, as it was before."""
+        abbr = self._station.get("abbr")
+        if not abbr:
+            self.sky_view = None
+            return None
+        view = self.sky_view
+        if view is None or view.station != abbr:
+            view = self.sky_view = SkyView(station=abbr, lat=self.lat, lon=self.lon)
+        today = now.astimezone(timezone.utc).date()
+        yesterday = (today - timedelta(days=1)).isoformat()
+        if view.covered < yesterday and (self._record_retry_at is None or now >= self._record_retry_at):
+            try:
+                taken = await self._async_read_record(view, cost, today)
+            except OgdError as err:
+                taken = 0
+                _LOGGER.debug("Station record not read, next try in %s: %s", _RECORD_RETRY, err)
+            view = self.sky_view
+            # nothing new yet, or no answer: asked again later, not with every wake
+            self._record_retry_at = None if view.covered >= yesterday else now + _RECORD_RETRY
+            if taken:
+                self._store.async_delay_save(self._kept, _SAVE_DELAY)
+        if view.known and not view.settled:
+            await self._async_drop_shade_lessons(view, now)
+        return view if view.known else None
+
+    async def _async_read_record(self, view: SkyView, cost: list[int], today: date) -> int:
+        """Take the days the station's record has beyond what the view
+        covers: the whole record the first time, its tail after that.
+        Returns the days taken."""
+        session = async_get_clientsession(self.hass)
+        behind = (today - date.fromisoformat(view.covered)).days if view.known else None
+        for days in (behind, None):
+            parts: list[RecordPart] = []
+            if days is None or days > _RECORD_WHOLE_DAYS:
+                days = None
+                if not view.known and today.timetuple().tm_yday <= _RECORD_SHORT_DAYS:
+                    cost[0] += 1
+                    try:
+                        parts, _requests, nbytes = await async_fetch_station_history(session, view.station, today.year)
+                        cost[1] += nbytes
+                    except OgdError as err:
+                        _LOGGER.debug("Earlier years of the station record not read: %s", err)
+            cost[0] += 1
+            recent, _requests, nbytes = await async_fetch_station_record(session, view.station, days)
+            cost[1] += nbytes
+            fresh, taken, reached = await self.hass.async_add_executor_job(
+                _with_record, view.as_dict(), view.station, self.lat, self.lon, parts + recent, today
+            )
+            if reached or days is None:
+                self.sky_view = fresh
+                return taken
+        return 0
+
+    async def _async_drop_shade_lessons(self, view: SkyView, now: datetime) -> None:
+        """Once, when the station's view is known: drop what was learned
+        while its shade passed for clouds. The weather model's fault under
+        a clear and a mixed sky was judged by those hours too, and the
+        plant's calibration made up for the correction they caused, in the
+        parts of the sky the sun stood in then."""
+        view.settled = True
+        shade = view.profile()
+        if shade:
+            if self.sky is not None and max(shade.values()) > bias.MIN_ELEVATION:
+                self.sky.forget((bias.CLEAR, bias.MIXED))
+            if self.calibration is not None:
+                bins = await self.hass.async_add_executor_job(_bins_under_shade, view.as_dict(), view.station, self.lat, self.lon, now)
+                if self.calibration is not None:
+                    self.calibration.forget(bins)
+        self._store.async_delay_save(self._kept, _SAVE_DELAY)
 
     # ---------------------------------------------------------- calibration
 
